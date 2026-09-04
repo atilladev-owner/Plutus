@@ -4,14 +4,18 @@ import { encodeCursor, type Cursor } from "../domain/cursor.js";
 export interface Page { limit: number; cursor: Cursor | null }
 export interface Paged<T> { data: T[]; next_cursor: string | null }
 
-export interface LedgerRow { id: string; key_id: string; name: string; next_seq: string; head_hash: Buffer; last_activity_at: Date; created_at: Date; cursor_t: string }
-export interface AccountRow { id: string; ledger_id: string; asset: string; name: string; kind: "normal" | "world"; balance: string; held: string; metadata: Record<string, string>; created_at: Date; cursor_t: string }
-export interface TransferRow { id: string; ledger_id: string; seq: string; memo: string; metadata: Record<string, string>; created_at: Date; legs: LegRow[]; cursor_t: string }
+export interface LedgerRow { id: string; key_id: string; name: string; next_seq: string; head_hash: Buffer; last_activity_at: Date; created_at: Date }
+export interface AccountRow { id: string; ledger_id: string; asset: string; name: string; kind: "normal" | "world"; balance: string; held: string; metadata: Record<string, string>; created_at: Date }
+export interface TransferRow { id: string; ledger_id: string; seq: string; memo: string; metadata: Record<string, string>; created_at: Date; legs: LegRow[] }
 export interface LegRow { position: number; from_account: string; from_hold: string | null; to_account: string; asset: string; amount: string }
-export interface HoldRow { id: string; ledger_id: string; account_id: string; asset: string; amount: string; remaining: string; status: "open" | "captured" | "released" | "expired"; expires_at: Date; memo: string; metadata: Record<string, string>; created_at: Date; closed_at: Date | null; cursor_t: string }
+export interface HoldRow { id: string; ledger_id: string; account_id: string; asset: string; amount: string; remaining: string; status: "open" | "captured" | "released" | "expired"; expires_at: Date; memo: string; metadata: Record<string, string>; created_at: Date; closed_at: Date | null }
 export interface JournalRow { ledger_id: string; seq: string; kind: string; entity_id: string; payload: Record<string, unknown>; prev_hash: Buffer; hash: Buffer; created_at: Date }
 export interface LegInput { from?: string; from_hold?: string; to: string; asset: string; amount: string }
 export interface WriteResult { id: string; seq: string; event_ids: string[] }
+
+/** A row as it comes back from a list query: the base row plus cursor_t, which only those
+ * queries select (created_at cast to text). Not a property of the row types themselves. */
+export type Cursored<T> = T & { cursor_t: string };
 
 /**
  * Newest first pagination over (created_at, id). Fetches one extra row to learn if there
@@ -20,7 +24,7 @@ export interface WriteResult { id: string; seq: string; event_ids: string[] }
  * that share a microsecond with the cursor row. cursor_t round trips through $2::timestamptz
  * exactly, so no row sharing a timestamp with the cursor row is ever skipped.
  */
-function pageOf<T extends { cursor_t: string; id: string }>(rows: T[], limit: number): Paged<T> {
+function pageOf<T extends { id: string }>(rows: Cursored<T>[], limit: number): Paged<T> {
   const n = limit > 0 ? limit : 1;
   const data = rows.slice(0, n);
   const last = rows.length > n ? data[data.length - 1] : undefined;
@@ -44,7 +48,7 @@ export async function countLedgers(c: PoolClient, keyId: string): Promise<number
 }
 
 export async function listLedgers(c: PoolClient, keyId: string, page: Page): Promise<Paged<LedgerRow>> {
-  const { rows } = await c.query<LedgerRow>(
+  const { rows } = await c.query<Cursored<LedgerRow>>(
     `select *, created_at::text as cursor_t from ledgers where key_id = $1
        and ($2::timestamptz is null or (created_at, id) < ($2::timestamptz, $3::text))
      order by created_at desc, id desc limit $4`,
@@ -70,7 +74,7 @@ export async function countAccounts(c: PoolClient, ledgerId: string): Promise<nu
 }
 
 export async function listAccounts(c: PoolClient, ledgerId: string, page: Page): Promise<Paged<AccountRow>> {
-  const { rows } = await c.query<AccountRow>(
+  const { rows } = await c.query<Cursored<AccountRow>>(
     `select *, created_at::text as cursor_t from accounts where ledger_id = $1
        and ($2::timestamptz is null or (created_at, id) < ($2::timestamptz, $3::text))
      order by created_at desc, id desc limit $4`,
@@ -97,7 +101,7 @@ export async function getTransfer(c: PoolClient, ledgerId: string, transferId: s
 }
 
 export async function listTransfers(c: PoolClient, ledgerId: string, page: Page, accountId: string | null): Promise<Paged<TransferRow>> {
-  const { rows } = await c.query<TransferRow>(
+  const { rows } = await c.query<Cursored<TransferRow>>(
     `select t.*, t.created_at::text as cursor_t, coalesce((select json_agg(json_build_object(
         'position', l.position, 'from_account', l.from_account, 'from_hold', l.from_hold,
         'to_account', l.to_account, 'asset', l.asset, 'amount', l.amount::text) order by l.position)
@@ -137,7 +141,7 @@ export async function getHold(c: PoolClient, ledgerId: string, holdId: string): 
 }
 
 export async function listHolds(c: PoolClient, ledgerId: string, page: Page, filters: { accountId: string | null; status: string | null }): Promise<Paged<HoldRow>> {
-  const { rows } = await c.query<HoldRow>(
+  const { rows } = await c.query<Cursored<HoldRow>>(
     `select *, created_at::text as cursor_t from holds where ledger_id = $1
        and ($2::timestamptz is null or (created_at, id) < ($2::timestamptz, $3::text))
        and ($5::text is null or account_id = $5) and ($6::text is null or status = $6)

@@ -9,6 +9,9 @@ declare
   v_id text;
   v_world_asset text;
 begin
+  if p_ref is null then
+    raise exception 'validation_failed' using detail = 'account reference is required';
+  end if;
   if p_asset is null then
     raise exception 'validation_failed' using detail = 'asset is required';
   end if;
@@ -97,18 +100,27 @@ begin
   for v_i in 0 .. v_n - 1 loop
     v_leg := p_legs -> v_i;
     v_asset := v_leg ->> 'asset';
-    if jsonb_typeof(v_leg -> 'asset') <> 'string' or not exists (select 1 from assets where code = v_asset) then
+    -- An absent key makes v_leg -> 'key' SQL NULL, and PL/pgSQL's IF treats NULL as
+    -- false, so every one of these checks tests key existence first with the jsonb
+    -- ? operator: an absent key must fail validation, never fall through as if unset.
+    if not (v_leg ? 'asset') or jsonb_typeof(v_leg -> 'asset') <> 'string' or not exists (select 1 from assets where code = v_asset) then
       raise exception 'validation_failed' using detail = format('leg %s asset', v_i);
     end if;
-    if jsonb_typeof(v_leg -> 'amount') <> 'string' or (v_leg ->> 'amount') !~ '^[1-9][0-9]*$' then
+    if not (v_leg ? 'amount') or jsonb_typeof(v_leg -> 'amount') <> 'string' or (v_leg ->> 'amount') !~ '^[1-9][0-9]*$' then
       raise exception 'validation_failed' using detail = format('leg %s amount must be a decimal string of minor units', v_i);
     end if;
     v_amount := (v_leg ->> 'amount')::bigint;
-    if (jsonb_typeof(v_leg -> 'from') = 'string') = (jsonb_typeof(v_leg -> 'from_hold') = 'string') then
+    if ((v_leg ? 'from')::int + (v_leg ? 'from_hold')::int) <> 1 then
       raise exception 'validation_failed' using detail = format('leg %s needs exactly one of from and from_hold', v_i);
     end if;
-    if jsonb_typeof(v_leg -> 'to') <> 'string' then
-      raise exception 'validation_failed' using detail = format('leg %s to must be a string', v_i);
+    if (v_leg ? 'from') and jsonb_typeof(v_leg -> 'from') <> 'string' then
+      raise exception 'validation_failed' using detail = format('leg %s from must be an account reference', v_i);
+    end if;
+    if (v_leg ? 'from_hold') and jsonb_typeof(v_leg -> 'from_hold') <> 'string' then
+      raise exception 'validation_failed' using detail = format('leg %s from_hold must be a hold reference', v_i);
+    end if;
+    if not (v_leg ? 'to') or jsonb_typeof(v_leg -> 'to') <> 'string' then
+      raise exception 'validation_failed' using detail = format('leg %s to must be an account reference', v_i);
     end if;
     v_hold := v_leg ->> 'from_hold';
     if v_hold is not null then

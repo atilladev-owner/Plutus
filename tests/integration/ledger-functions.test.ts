@@ -87,6 +87,23 @@ describe("post_transfer", () => {
     expect(mapDbError(await withTx(testPool(), (c) => L.postTransfer(c, { ledgerId: s.ledgerId, transferId: newId("tr"), legs: [both], memo: "", metadata: {} })).catch((e: unknown) => e))?.code).toBe("validation_failed");
   });
 
+  it("refuses a leg with amount omitted, to omitted, or neither from nor from_hold present", async () => {
+    const noAmount = { from: s.a, to: s.b, asset: "GHS" } as unknown as L.LegInput;
+    const errNoAmount = await withTx(testPool(), (c) => L.postTransfer(c, { ledgerId: s.ledgerId, transferId: newId("tr"), legs: [noAmount], memo: "", metadata: {} })).catch((e: unknown) => e);
+    expect(mapDbError(errNoAmount)?.code).toBe("validation_failed");
+    expect(mapDbError(errNoAmount)?.status).toBe(422);
+
+    const noTo = { from: s.a, asset: "GHS", amount: "1" } as unknown as L.LegInput;
+    const errNoTo = await withTx(testPool(), (c) => L.postTransfer(c, { ledgerId: s.ledgerId, transferId: newId("tr"), legs: [noTo], memo: "", metadata: {} })).catch((e: unknown) => e);
+    expect(mapDbError(errNoTo)?.code).toBe("validation_failed");
+    expect(mapDbError(errNoTo)?.status).toBe(422);
+
+    const neitherFromNorHold = { to: s.b, asset: "GHS", amount: "1" } as unknown as L.LegInput;
+    const errNeither = await withTx(testPool(), (c) => L.postTransfer(c, { ledgerId: s.ledgerId, transferId: newId("tr"), legs: [neitherFromNorHold], memo: "", metadata: {} })).catch((e: unknown) => e);
+    expect(mapDbError(errNeither)?.code).toBe("validation_failed");
+    expect(mapDbError(errNeither)?.status).toBe(422);
+  });
+
   it("writes a journal whose hashes the TypeScript side can recompute", async () => {
     const rows = await withTx(testPool(), (c) => L.listJournal(c, s.ledgerId, 0n, 100));
     expect(rows.length).toBeGreaterThanOrEqual(2);
