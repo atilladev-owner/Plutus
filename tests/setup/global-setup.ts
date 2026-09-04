@@ -30,6 +30,11 @@ export default async function setup(): Promise<() => Promise<void>> {
     stop = async () => { await pg.stop(); };
   }
   process.env.TEST_DATABASE_URL = url;
-  await runMigrations(url);
+  try {
+    await runMigrations(url);
+  } catch (err) {
+    await stop();
+    throw err;
+  }
   return async () => { await stop(); };
 }
