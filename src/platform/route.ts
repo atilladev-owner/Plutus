@@ -28,7 +28,11 @@ export interface RouteDef<P = unknown, Q = unknown, B = unknown, R = unknown> {
   body?: ZodType<B>;
   response: ZodType<R>;
   status?: number;
-  handler: (ctx: RouteContext<P, Q, B>) => Promise<R>;
+  // Method shorthand, not a function-typed property: TypeScript checks method signatures
+  // bivariantly, which is what lets a RouteDef<P, Q, B, R> with concrete P/Q/B live in a
+  // RouteDef[] (== RouteDef<unknown, unknown, unknown, unknown>[]) array. A property typed
+  // as an arrow function is checked contravariantly and rejects that assignment.
+  handler(ctx: RouteContext<P, Q, B>): Promise<R>;
 }
 
 export const ROUTE_REGISTRY: RouteDef[] = [];
@@ -71,8 +75,14 @@ export function mountRoutes(app: Express, deps: AppDeps, routes: RouteDef[], mw:
         if (!query.success) throw validation("query is invalid", issuesOf(query.error));
         let body: unknown = undefined;
         if (def.body) {
-          if (!req.is("application/json") && req.method !== "GET") throw new ApiError(415, "unsupported_media_type", "send application/json");
-          const parsed = def.body.safeParse(req.body ?? {});
+          // req.is() reports false, not null, when Content-Length: 0 is present with no
+          // Content-Type (many clients send that for a bodyless POST), so it alone cannot
+          // tell "no body" from "wrong type with a real body". Content-Length / Transfer-Encoding
+          // decide whether a body actually exists; req.is() then decides whether its type is right.
+          const hasBody = req.header("transfer-encoding") !== undefined || Number(req.header("content-length") ?? "0") > 0;
+          const bodyType = req.is("application/json");
+          if (hasBody && bodyType === false) throw new ApiError(415, "unsupported_media_type", "send application/json");
+          const parsed = def.body.safeParse(req.body);
           if (!parsed.success) throw validation("the request body is invalid", issuesOf(parsed.error));
           body = parsed.data;
         }

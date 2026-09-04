@@ -9,8 +9,9 @@ import { MemoryCache } from "../../src/platform/cache.js";
 import { createLogger } from "../../src/platform/logger.js";
 import { allRoutes } from "../../src/routes/index.js";
 import { productionMiddleware } from "../../src/platform/middleware.js";
+import type { RouteDef } from "../../src/platform/route.js";
 
-export async function makeTestApp(overrides: Partial<AppDeps> = {}): Promise<{ app: Express; deps: AppDeps; scheduler: MemoryScheduler; limiter: MemoryRateLimiter }> {
+export async function makeTestApp(overrides: Partial<AppDeps> = {}, routes: RouteDef[] = allRoutes): Promise<{ app: Express; deps: AppDeps; scheduler: MemoryScheduler; limiter: MemoryRateLimiter }> {
   const scheduler = new MemoryScheduler();
   const limiter = new MemoryRateLimiter();
   const deps: AppDeps = {
@@ -22,6 +23,6 @@ export async function makeTestApp(overrides: Partial<AppDeps> = {}): Promise<{ a
     config: loadConfig({ DATABASE_URL: process.env.TEST_DATABASE_URL, NODE_ENV: "test", CRON_SECRET: "test-cron-secret-0123456789", PUBLIC_BASE_URL: "http://localhost:3000" }),
     ...overrides,
   };
-  const app = createApp(deps, allRoutes, productionMiddleware(deps));
+  const app = createApp(deps, routes, productionMiddleware(deps));
   return { app, deps, scheduler, limiter };
 }

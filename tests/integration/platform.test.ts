@@ -1,6 +1,15 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
+import { z } from "zod";
 import { makeTestApp } from "../helpers/app.js";
+import { defineRoute } from "../../src/platform/route.js";
+
+const probeRoute = defineRoute({
+  method: "post", path: "/probe", summary: "probe", tag: "Meta", auth: "none", limit: "none",
+  body: z.object({ name: z.string() }).optional(),
+  response: z.object({ got: z.string().nullable() }),
+  handler: async ({ body }) => ({ got: body?.name ?? null }),
+});
 
 describe("platform", () => {
   it("health reports both dependencies and a version", async () => {
@@ -32,5 +41,17 @@ describe("platform", () => {
     const res = await request(app).get("/health");
     expect(res.headers["x-powered-by"]).toBeUndefined();
     expect(res.headers["x-content-type-options"]).toBe("nosniff");
+  });
+  it("requires a JSON content type only when a body is present", async () => {
+    const { app } = await makeTestApp({}, [probeRoute]);
+    const noBody = await request(app).post("/probe");
+    expect(noBody.status).toBe(200);
+    expect(noBody.body).toEqual({ got: null });
+    const wrongType = await request(app).post("/probe").set("Content-Type", "text/plain").send("hello");
+    expect(wrongType.status).toBe(415);
+    expect(wrongType.body.code).toBe("unsupported_media_type");
+    const withBody = await request(app).post("/probe").send({ name: "x" });
+    expect(withBody.status).toBe(200);
+    expect(withBody.body).toEqual({ got: "x" });
   });
 });
