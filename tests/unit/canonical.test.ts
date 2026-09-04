@@ -6,7 +6,7 @@ describe("canonicalJson", () => {
     expect(canonicalJson({ b: 1, a: { d: "x", c: [true, null] } })).toBe('{"a":{"c":[true,null],"d":"x"},"b":1}');
   });
   it("escapes strings the way JSON does", () => {
-    expect(canonicalJson({ s: 'q"\\\n\t\u0001' })).toBe('{"s":"q\\\\\"\\\n\t\u0001"}');
+    expect(canonicalJson({ s: 'q"\\\n\t\u0001' })).toBe('{"s":"q\\"\\\\\\n\\t\\u0001"}');
   });
   it("refuses non integer numbers", () => {
     expect(() => canonicalJson({ x: 1.5 })).toThrow();
