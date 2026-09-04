@@ -1,5 +1,8 @@
 import { createApp } from "./app.js";
+import { buildProductionDeps } from "./deps.js";
+import { allRoutes } from "./routes/index.js";
+import { productionMiddleware } from "./platform/middleware.js";
 
-// Vercel imports this module and serves the default export as one function.
-const app = createApp();
+const deps = buildProductionDeps();
+const app = createApp(deps, allRoutes, productionMiddleware(deps));
 export default app;
