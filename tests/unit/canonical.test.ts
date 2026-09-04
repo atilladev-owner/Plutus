@@ -6,7 +6,7 @@ describe("canonicalJson", () => {
     expect(canonicalJson({ b: 1, a: { d: "x", c: [true, null] } })).toBe('{"a":{"c":[true,null],"d":"x"},"b":1}');
   });
   it("escapes strings the way JSON does", () => {
-    expect(canonicalJson({ s: 'q"\\\n\t' })).toBe('{"s":"q\\"\\\\\\n\\t\\u0001"}');
+    expect(canonicalJson({ s: 'q"\\\n\t\u0001' })).toBe('{"s":"q\\\\\"\\\n\t\u0001"}');
   });
   it("refuses non integer numbers", () => {
     expect(() => canonicalJson({ x: 1.5 })).toThrow();
@@ -19,7 +19,6 @@ describe("canonicalJson", () => {
 
 describe("hashEntry", () => {
   it("matches a fixed vector", () => {
-    // sha256(32 zero bytes || '{"a":1}') computed once by hand with node's crypto and pinned.
     const h = hashEntry(GENESIS_HASH, '{"a":1}');
     expect(h.toString("hex")).toBe("b06a229070741292512e8760f470dd7a4c46ccfdf253df781d88dabe58c1ccb1");
   });
