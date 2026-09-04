@@ -29,7 +29,7 @@ Settled with the owner. Not open for relitigation during implementation.
 | Hosting | Vercel Hobby, region `iad1`. Cost: zero |
 | Database | Neon Postgres, free plan, region `us-east-1`. Plain SQL through `pg`. No ORM |
 | Hot state | Upstash Redis, free plan. Rate limits and short caches only. Never the source of truth |
-| Background work | Vercel Workflows for webhook delivery. One daily Vercel cron for sweeps |
+| Background work | Upstash QStash for webhook delivery: a delayed HTTPS message per attempt, 1,000 messages a day free, signed callbacks. One daily Vercel cron for sweeps. Vercel Workflows were the first choice and were dropped on 2026-09-04 because they require the Express app to be rebuilt through Nitro, which breaks the plain Express deployment this project exists to show |
 | Validation and docs | Every request and response schema is a zod schema. OpenAPI 3.1 is generated from those schemas. Scalar renders it at `/docs` |
 | Money | Integer minor units, `BIGINT` in Postgres, strings in JSON. Never a float, never a JSON number |
 | Identity | API keys only. No accounts, no email, no personal data stored anywhere |
@@ -68,7 +68,7 @@ client --HTTP--> Vercel Function (Express 5)
                     |  auth, rate limit, idempotency, validation
                     +--> Neon Postgres   (ledgers, journal, orders, deliveries)
                     +--> Upstash Redis   (rate limit windows, reference price cache)
-                    +--> Vercel Workflow (webhook delivery with retries)
+                    +--> Upstash QStash   (delayed callbacks that drive webhook retries)
 Vercel cron (daily) --> /internal/sweep   (expired holds, idle cleanup, house refill)
 ```
 
@@ -76,7 +76,7 @@ Rules that follow from serverless:
 
 - No state lives in process memory between requests. Anything durable is in Postgres. Anything hot and disposable is in Redis.
 - Every write that must be atomic runs inside one Postgres function under row locks. The application never does read then write on money.
-- There are no loops. Anything that looks like a loop is either a workflow with sleeps or work done on demand inside a request.
+- There are no loops. Anything that looks like a loop is either a delayed message that calls back into the API, or work done on demand inside a request.
 - A function invocation lives at most 300 seconds. WebSocket connections are designed around that limit, not against it.
 
 Layers inside `src`:
@@ -314,9 +314,9 @@ A ceiling hit is a 409 `sandbox_limit_reached` with `detail` naming the ceiling.
 
 Delivery is an HTTPS `POST` with the event as the body and two headers: `Plutus-Event-Id` and `Plutus-Signature: t=<unix seconds>,v1=<hex>`, where the hex is HMAC SHA256 with the endpoint secret over `t + "." + body`. A receiver recomputes it, compares in constant time, and rejects any `t` more than five minutes from now. The README ships a twelve line verifier in Node.
 
-Delivery runs as a Vercel Workflow started when the event is written. Schedule of attempts: immediate, then sleeps of 30 seconds, 2 minutes, 10 minutes, 30 minutes, 1 hour, 3 hours, 6 hours, 12 hours; eight attempts in roughly 23 hours. A 2xx within 10 seconds is success. Anything else is a failure. After the eighth failure the delivery is `dead` and appears in the dead letter list, where `retry` starts a fresh workflow for it. Fifty consecutive failures across deliveries disable the endpoint; the key's next request carries a `Plutus-Warning` header naming it, and re enabling is a `PATCH` with `status: active`.
+Delivery is driven by QStash. When an event is written, the API creates one delivery row per subscribed endpoint and publishes a QStash message addressed to `POST /internal/webhooks/deliver` carrying the delivery id. QStash calls back, the API verifies the QStash signature, makes one attempt, and records the result. On failure the API publishes the next message with a delay. Schedule of attempts: immediate, then delays of 30 seconds, 2 minutes, 10 minutes, 30 minutes, 1 hour, 3 hours, 6 hours, 12 hours; eight attempts in roughly 23 hours. A 2xx within 10 seconds is success. Anything else is a failure. After the eighth failure the delivery is `dead` and appears in the dead letter list, where `retry` publishes a fresh message for it. Fifty consecutive failures across deliveries disable the endpoint; the key's next request carries a `Plutus-Warning` header naming it, and re enabling is a `PATCH` with `status: active`.
 
-The workflow event budget on Hobby is 50,000 a month. A delivery that succeeds first time costs about three events. The sandbox ceilings keep this inside budget at portfolio traffic, and `/health` reports the month's count.
+Without a QStash token, locally and in tests, the scheduler is an in process double that either delivers at once or records what it would have scheduled, so every delivery path is testable without the network. The daily sweep republishes any delivery left `pending` for more than an hour, so a lost message costs a delay, never a delivery. QStash free is 1,000 messages a day; each attempt is one message, and `/health` reports the day's count.
 
 ### 9.4 Observability
 
@@ -340,6 +340,8 @@ The workflow event budget on Hobby is 50,000 a month. A delivery that succeeds f
 | `DATABASE_URL` | Neon pooled connection for the API |
 | `DATABASE_URL_UNPOOLED` | Neon direct connection for migrations |
 | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Rate limits and caches |
+| `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY` | Publishing delayed deliveries and verifying the callbacks |
+| `PUBLIC_BASE_URL` | The deployment's own https origin, which QStash calls back to |
 | `CRON_SECRET` | Vercel sends it as a bearer to `/internal/sweep`; the route refuses anything else |
 | `SENTRY_DSN` | Optional |
 | `REFERENCE_PRICE_URL` | Defaults to Binance's public ticker endpoint |
@@ -513,7 +515,8 @@ CI is GitHub Actions on every push and pull request: install, lint, typecheck, h
 ## 13. Deployment and operations
 
 - `api/index.ts` exports the Express app. `vercel.json` rewrites every path to it, sets region `iad1`, sets `maxDuration` 300 on the function because the stream needs it, and declares one cron: `0 3 * * *` to `/internal/sweep`. Every route other than the stream aborts its own work at 30 seconds with a 503, so a slow database cannot hold a function open for five minutes.
-- The sweep, guarded by `CRON_SECRET`: close expired holds, delete idle sandbox ledgers and keys, delete events older than 30 days and idempotency records older than 24 hours, refresh cold house ladders, refill house accounts.
+- The sweep, guarded by `CRON_SECRET`: close expired holds, delete idle sandbox ledgers and keys, delete events older than 30 days and idempotency records older than 24 hours, republish webhook deliveries left pending for over an hour, refresh cold house ladders, refill house accounts.
+- Integration tests run against a real Postgres started in process by `embedded-postgres` on the developer's machine, because this machine has no Docker, and against a `postgres:18` service container in CI. `TEST_DATABASE_URL`, when set, overrides both.
 - Neon and Vercel are both in US east so the database sits beside the functions. Cold starts on Neon's free plan resume on the first connection, and `/health` reports the latency honestly.
 - Rollback is a Vercel redeploy of the previous build. Migrations are additive; a migration that drops or renames a column ships one release after the code stopped using it.
 
