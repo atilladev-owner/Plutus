@@ -78,6 +78,15 @@ describe("post_transfer", () => {
     expect(mapDbError(await withTx(testPool(), (c) => L.postTransfer(c, { ledgerId: s.ledgerId, transferId: newId("tr"), legs: [{ from: other.a, to: s.b, asset: "GHS", amount: "1" }], memo: "", metadata: {} })).catch((e: unknown) => e))?.code).toBe("not_found");
   });
 
+  it("refuses a leg with a missing asset, a numeric amount, or both from and from_hold", async () => {
+    const noAsset = { from: s.a, to: s.b, amount: "1" } as unknown as L.LegInput;
+    expect(mapDbError(await withTx(testPool(), (c) => L.postTransfer(c, { ledgerId: s.ledgerId, transferId: newId("tr"), legs: [noAsset], memo: "", metadata: {} })).catch((e: unknown) => e))?.code).toBe("validation_failed");
+    const numericAmount = { from: s.a, to: s.b, asset: "GHS", amount: 1 } as unknown as L.LegInput;
+    expect(mapDbError(await withTx(testPool(), (c) => L.postTransfer(c, { ledgerId: s.ledgerId, transferId: newId("tr"), legs: [numericAmount], memo: "", metadata: {} })).catch((e: unknown) => e))?.code).toBe("validation_failed");
+    const both = { from: s.a, from_hold: newId("hold"), to: s.b, asset: "GHS", amount: "1" };
+    expect(mapDbError(await withTx(testPool(), (c) => L.postTransfer(c, { ledgerId: s.ledgerId, transferId: newId("tr"), legs: [both], memo: "", metadata: {} })).catch((e: unknown) => e))?.code).toBe("validation_failed");
+  });
+
   it("writes a journal whose hashes the TypeScript side can recompute", async () => {
     const rows = await withTx(testPool(), (c) => L.listJournal(c, s.ledgerId, 0n, 100));
     expect(rows.length).toBeGreaterThanOrEqual(2);
@@ -141,5 +150,30 @@ describe("holds", () => {
     const world = rows[0]?.id as string;
     expect(mapDbError(await withTx(testPool(), (c) => L.createHold(c, { ledgerId: s.ledgerId, holdId: newId("hold"), accountId: world, amount: "1", expiresAt: new Date(), memo: "", metadata: {} })).catch((e: unknown) => e))?.code).toBe("validation_failed");
     expect(mapDbError(await withTx(testPool(), (c) => L.createHold(c, { ledgerId: s.ledgerId, holdId: newId("hold"), accountId: s.a, amount: "1", expiresAt: new Date(), memo: "", metadata: {} })).catch((e: unknown) => e))?.code).toBe("insufficient_funds");
+  });
+
+  it("sweeps two expired holds concurrently without either call losing one to the other", async () => {
+    const s = await seedLedger();
+    await withTx(testPool(), (c) => L.postTransfer(c, { ledgerId: s.ledgerId, transferId: newId("tr"), legs: [{ from: "world:GHS", to: s.a, asset: "GHS", amount: "100" }], memo: "", metadata: {} }));
+    await withTx(testPool(), (c) => L.createHold(c, { ledgerId: s.ledgerId, holdId: newId("hold"), accountId: s.a, amount: "1", expiresAt: new Date(Date.now() - 1000), memo: "", metadata: {} }));
+    await withTx(testPool(), (c) => L.createHold(c, { ledgerId: s.ledgerId, holdId: newId("hold"), accountId: s.a, amount: "1", expiresAt: new Date(Date.now() - 1000), memo: "", metadata: {} }));
+    const [n1, n2] = await Promise.all([
+      withTx(testPool(), (c) => L.expireHolds(c, s.ledgerId, null)),
+      withTx(testPool(), (c) => L.expireHolds(c, s.ledgerId, null)),
+    ]);
+    expect(n1 + n2).toBe(2);
+  });
+
+  it("refuses the 101st open hold on a sandbox account", async () => {
+    const s = await seedLedger();
+    await withTx(testPool(), (c) => L.postTransfer(c, { ledgerId: s.ledgerId, transferId: newId("tr"), legs: [{ from: "world:GHS", to: s.a, asset: "GHS", amount: "1000" }], memo: "", metadata: {} }));
+    for (let i = 0; i < 100; i += 1) {
+      await withTx(testPool(), (c) => L.createHold(c, { ledgerId: s.ledgerId, holdId: newId("hold"), accountId: s.a, amount: "1", expiresAt: new Date(Date.now() + 60_000), memo: "", metadata: {} }));
+    }
+    const err = await withTx(testPool(), (c) => L.createHold(c, { ledgerId: s.ledgerId, holdId: newId("hold"), accountId: s.a, amount: "1", expiresAt: new Date(Date.now() + 60_000), memo: "", metadata: {} })).catch((e: unknown) => e);
+    const mapped = mapDbError(err);
+    expect(mapped?.code).toBe("sandbox_limit_reached");
+    expect(mapped?.status).toBe(409);
+    expect(mapped?.message).toContain("open_holds_per_account");
   });
 });

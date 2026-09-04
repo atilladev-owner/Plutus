@@ -9,6 +9,9 @@ declare
   v_id text;
   v_world_asset text;
 begin
+  if p_asset is null then
+    raise exception 'validation_failed' using detail = 'asset is required';
+  end if;
   if p_ref like 'world:%' then
     v_world_asset := substr(p_ref, 7);
     if v_world_asset <> p_asset then
@@ -94,9 +97,18 @@ begin
   for v_i in 0 .. v_n - 1 loop
     v_leg := p_legs -> v_i;
     v_asset := v_leg ->> 'asset';
+    if jsonb_typeof(v_leg -> 'asset') <> 'string' or not exists (select 1 from assets where code = v_asset) then
+      raise exception 'validation_failed' using detail = format('leg %s asset', v_i);
+    end if;
+    if jsonb_typeof(v_leg -> 'amount') <> 'string' or (v_leg ->> 'amount') !~ '^[1-9][0-9]*$' then
+      raise exception 'validation_failed' using detail = format('leg %s amount must be a decimal string of minor units', v_i);
+    end if;
     v_amount := (v_leg ->> 'amount')::bigint;
-    if v_amount is null or v_amount <= 0 then
-      raise exception 'validation_failed' using detail = format('leg %s amount must be positive', v_i);
+    if (jsonb_typeof(v_leg -> 'from') = 'string') = (jsonb_typeof(v_leg -> 'from_hold') = 'string') then
+      raise exception 'validation_failed' using detail = format('leg %s needs exactly one of from and from_hold', v_i);
+    end if;
+    if jsonb_typeof(v_leg -> 'to') <> 'string' then
+      raise exception 'validation_failed' using detail = format('leg %s to must be a string', v_i);
     end if;
     v_hold := v_leg ->> 'from_hold';
     if v_hold is not null then
@@ -117,8 +129,11 @@ begin
       'from', v_from, 'to', v_to, 'asset', v_asset, 'amount', v_amount::text, 'from_hold', v_hold);
   end loop;
 
-  -- Lock every touched account in one fixed order. Two transfers touching the same
-  -- accounts queue here instead of deadlocking.
+  -- The ledger row lock taken above is what actually serialises every writer on this
+  -- ledger; that alone is enough for every legitimate caller today. This line is a
+  -- fallback, not the primary defence: it locks every touched account in one fixed
+  -- order, so two transfers touching the same accounts would queue here instead of
+  -- deadlocking, in case the ledger lock is ever relaxed or bypassed.
   perform 1 from accounts where id = any(v_ids) order by id for update;
 
   -- Pass two: check and apply, reading each account fresh so a second leg on the
@@ -268,6 +283,10 @@ declare
   v_id text;
   v_count int := 0;
 begin
+  perform 1 from ledgers where id = p_ledger_id for update;
+  if not found then
+    raise exception 'ledger_not_found';
+  end if;
   for v_id in
     select id from holds
     where ledger_id = p_ledger_id and status = 'open' and expires_at <= p_now

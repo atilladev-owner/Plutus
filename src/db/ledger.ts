@@ -4,20 +4,27 @@ import { encodeCursor, type Cursor } from "../domain/cursor.js";
 export interface Page { limit: number; cursor: Cursor | null }
 export interface Paged<T> { data: T[]; next_cursor: string | null }
 
-export interface LedgerRow { id: string; key_id: string; name: string; next_seq: string; head_hash: Buffer; last_activity_at: Date; created_at: Date }
-export interface AccountRow { id: string; ledger_id: string; asset: string; name: string; kind: "normal" | "world"; balance: string; held: string; metadata: Record<string, string>; created_at: Date }
-export interface TransferRow { id: string; ledger_id: string; seq: string; memo: string; metadata: Record<string, string>; created_at: Date; legs: LegRow[] }
+export interface LedgerRow { id: string; key_id: string; name: string; next_seq: string; head_hash: Buffer; last_activity_at: Date; created_at: Date; cursor_t: string }
+export interface AccountRow { id: string; ledger_id: string; asset: string; name: string; kind: "normal" | "world"; balance: string; held: string; metadata: Record<string, string>; created_at: Date; cursor_t: string }
+export interface TransferRow { id: string; ledger_id: string; seq: string; memo: string; metadata: Record<string, string>; created_at: Date; legs: LegRow[]; cursor_t: string }
 export interface LegRow { position: number; from_account: string; from_hold: string | null; to_account: string; asset: string; amount: string }
-export interface HoldRow { id: string; ledger_id: string; account_id: string; asset: string; amount: string; remaining: string; status: "open" | "captured" | "released" | "expired"; expires_at: Date; memo: string; metadata: Record<string, string>; created_at: Date; closed_at: Date | null }
+export interface HoldRow { id: string; ledger_id: string; account_id: string; asset: string; amount: string; remaining: string; status: "open" | "captured" | "released" | "expired"; expires_at: Date; memo: string; metadata: Record<string, string>; created_at: Date; closed_at: Date | null; cursor_t: string }
 export interface JournalRow { ledger_id: string; seq: string; kind: string; entity_id: string; payload: Record<string, unknown>; prev_hash: Buffer; hash: Buffer; created_at: Date }
 export interface LegInput { from?: string; from_hold?: string; to: string; asset: string; amount: string }
 export interface WriteResult { id: string; seq: string; event_ids: string[] }
 
-/** Newest first pagination over (created_at, id). Fetches one extra row to learn if there is a next page. */
-function pageOf<T extends { created_at: Date; id: string }>(rows: T[], limit: number): Paged<T> {
-  const data = rows.slice(0, limit);
-  const last = rows.length > limit ? data[data.length - 1] : undefined;
-  return { data, next_cursor: last ? encodeCursor({ t: last.created_at.toISOString(), id: last.id }) : null };
+/**
+ * Newest first pagination over (created_at, id). Fetches one extra row to learn if there
+ * is a next page. Cursors carry cursor_t, the row's created_at cast to text in Postgres,
+ * not a JS Date: Date.toISOString() only keeps milliseconds, which silently drops rows
+ * that share a microsecond with the cursor row. cursor_t round trips through $2::timestamptz
+ * exactly, so no row sharing a timestamp with the cursor row is ever skipped.
+ */
+function pageOf<T extends { cursor_t: string; id: string }>(rows: T[], limit: number): Paged<T> {
+  const n = limit > 0 ? limit : 1;
+  const data = rows.slice(0, n);
+  const last = rows.length > n ? data[data.length - 1] : undefined;
+  return { data, next_cursor: last ? encodeCursor({ t: last.cursor_t, id: last.id }) : null };
 }
 
 export async function createLedger(c: PoolClient, input: { id: string; keyId: string; name: string }): Promise<LedgerRow> {
@@ -38,7 +45,7 @@ export async function countLedgers(c: PoolClient, keyId: string): Promise<number
 
 export async function listLedgers(c: PoolClient, keyId: string, page: Page): Promise<Paged<LedgerRow>> {
   const { rows } = await c.query<LedgerRow>(
-    `select * from ledgers where key_id = $1
+    `select *, created_at::text as cursor_t from ledgers where key_id = $1
        and ($2::timestamptz is null or (created_at, id) < ($2::timestamptz, $3::text))
      order by created_at desc, id desc limit $4`,
     [keyId, page.cursor?.t ?? null, page.cursor?.id ?? "", page.limit + 1]);
@@ -64,7 +71,7 @@ export async function countAccounts(c: PoolClient, ledgerId: string): Promise<nu
 
 export async function listAccounts(c: PoolClient, ledgerId: string, page: Page): Promise<Paged<AccountRow>> {
   const { rows } = await c.query<AccountRow>(
-    `select * from accounts where ledger_id = $1
+    `select *, created_at::text as cursor_t from accounts where ledger_id = $1
        and ($2::timestamptz is null or (created_at, id) < ($2::timestamptz, $3::text))
      order by created_at desc, id desc limit $4`,
     [ledgerId, page.cursor?.t ?? null, page.cursor?.id ?? "", page.limit + 1]);
@@ -91,7 +98,7 @@ export async function getTransfer(c: PoolClient, ledgerId: string, transferId: s
 
 export async function listTransfers(c: PoolClient, ledgerId: string, page: Page, accountId: string | null): Promise<Paged<TransferRow>> {
   const { rows } = await c.query<TransferRow>(
-    `select t.*, coalesce((select json_agg(json_build_object(
+    `select t.*, t.created_at::text as cursor_t, coalesce((select json_agg(json_build_object(
         'position', l.position, 'from_account', l.from_account, 'from_hold', l.from_hold,
         'to_account', l.to_account, 'asset', l.asset, 'amount', l.amount::text) order by l.position)
        from transfer_legs l where l.transfer_id = t.id), '[]'::json) as legs
@@ -131,7 +138,7 @@ export async function getHold(c: PoolClient, ledgerId: string, holdId: string): 
 
 export async function listHolds(c: PoolClient, ledgerId: string, page: Page, filters: { accountId: string | null; status: string | null }): Promise<Paged<HoldRow>> {
   const { rows } = await c.query<HoldRow>(
-    `select * from holds where ledger_id = $1
+    `select *, created_at::text as cursor_t from holds where ledger_id = $1
        and ($2::timestamptz is null or (created_at, id) < ($2::timestamptz, $3::text))
        and ($5::text is null or account_id = $5) and ($6::text is null or status = $6)
      order by created_at desc, id desc limit $4`,
