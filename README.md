@@ -6,7 +6,7 @@ Express 5, TypeScript, Postgres. Built in two milestones: the ledger first, the 
 
 ## Status
 
-Designing. The approved design lives at `docs/superpowers/specs/2026-09-04-plutus-design.md`. Nothing is deployed yet.
+Building milestone one, the ledger. The plan is at docs/superpowers/plans/2026-09-04-milestone-one-the-ledger.md.
 
 ## Licence
 
