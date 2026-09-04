@@ -1,0 +1,28 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+.vercel/
+*.tsbuildinfo
+
+# Environment and secrets. Never commit a real value.
+.env
+.env.*
+!.env.example
+
+# Local tooling state
+.superpowers/
+.impeccable/
+test-results/
+playwright-report/
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Logs
+*.log
+npm-debug.log*
