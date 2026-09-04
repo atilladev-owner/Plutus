@@ -60,4 +60,14 @@ describe("house rules", () => {
     const root = tree({ "src/a.ts": "export const a = 1n;\n" });
     expect(checkTree(root)).toEqual([]);
   });
+  it("flags em dashes in design docs", () => {
+    const dashChar = String.fromCharCode(0x2014);
+    const root = tree({ "docs/superpowers/x.md": "a " + dashChar + " b\n" });
+    expect(checkTree(root).map((v: Violation) => v.rule)).toContain("no-dashes");
+  });
+  it("exempts secrets in design docs", () => {
+    const root = tree({ "docs/superpowers/x.md": 'const t = "pl_' + 'live_abcdefghijklmnopqrstuvwxyz0123456789ABCDEF' + '";\n' });
+    const hasSecretViolation = checkTree(root).some((v: Violation) => v.rule === "no-secrets");
+    expect(hasSecretViolation).toBe(false);
+  });
 });

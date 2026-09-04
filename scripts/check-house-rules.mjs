@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync, existsSync } from "node:fs";
 import { join, relative, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "coverage", ".vercel", ".superpowers", ".impeccable", "superpowers"]);
+const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "coverage", ".vercel", ".superpowers", ".impeccable"]);
 const TEXT_EXT = new Set([".ts", ".mts", ".js", ".mjs", ".json", ".md", ".sql", ".yml", ".yaml", ".html", ".css"]);
 
 const EMOJI = /(?!\u00A9|\u00AE|\u2122)\p{Extended_Pictographic}/u;
@@ -42,6 +42,7 @@ export function checkTree(root) {
     const inSrc = file.startsWith("src/");
     const isLicence = file === "LICENSE.md";
     const isEnvExample = file === ".env.example";
+    const isDesignDoc = file.startsWith("docs/superpowers/");
     const lines = text.split("\n");
     lines.forEach((line, i) => {
       const at = { file, line: i + 1, excerpt: line.trim().slice(0, 100) };
@@ -50,7 +51,7 @@ export function checkTree(root) {
       if (inSrc && CONSOLE.test(line)) violations.push({ rule: "no-console", ...at });
       if (inSrc && FLOAT.test(line)) violations.push({ rule: "no-float-money", ...at });
       if (inSrc && ANY.test(line)) violations.push({ rule: "no-any", ...at });
-      if (!isEnvExample && SECRETS.some((re) => re.test(line))) violations.push({ rule: "no-secrets", ...at });
+      if (!isEnvExample && !isDesignDoc && SECRETS.some((re) => re.test(line))) violations.push({ rule: "no-secrets", ...at });
     });
   }
   return violations;
