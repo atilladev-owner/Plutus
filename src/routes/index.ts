@@ -7,8 +7,9 @@ import { transferRoutes } from "./transfers.js";
 import { holdRoutes } from "./holds.js";
 import { journalRoutes } from "./journal.js";
 import { eventRoutes } from "./events.js";
+import { verifyRoutes } from "./verify.js";
 
 export const allRoutes = [
   ...healthRoutes, ...assetRoutes, ...keyRoutes,
-  ...ledgerRoutes, ...accountRoutes, ...transferRoutes, ...holdRoutes, ...journalRoutes, ...eventRoutes,
+  ...ledgerRoutes, ...accountRoutes, ...transferRoutes, ...holdRoutes, ...journalRoutes, ...eventRoutes, ...verifyRoutes,
 ];
