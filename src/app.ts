@@ -1,5 +1,4 @@
-import express, { type Express, type Request } from "express";
-// Namespace form on purpose: helmet ships ESM and CommonJS typings and the default import resolved to the CommonJS pair on the deploy host.
+import express, { type Express, type Request, type RequestHandler } from "express";
 import * as helmetModule from "helmet";
 import type { AppDeps } from "./deps.js";
 import { requestId } from "./platform/request-id.js";
@@ -8,6 +7,17 @@ import { errorHandler, notFoundHandler } from "./platform/error-handler.js";
 import { mountRoutes, type RouteDef, type RouteMiddleware } from "./platform/route.js";
 import { healthRoutes } from "./routes/health.js";
 import { mountDocs } from "./routes/docs.js";
+
+type HelmetFactory = (options?: helmetModule.HelmetOptions) => RequestHandler;
+
+/**
+ * helmet ships ESM and CommonJS typings and TypeScript resolved a different pair on the
+ * deploy host than locally, so the factory is picked at runtime instead of at type level.
+ * Node always loads the ESM build, where the default export is the factory itself.
+ */
+const helmetExport: unknown = helmetModule.default;
+const helmet: HelmetFactory =
+  typeof helmetExport === "function" ? (helmetExport as HelmetFactory) : (helmetExport as { default: HelmetFactory }).default;
 
 const passThrough: RouteMiddleware = {
   auth: () => (_req, _res, next) => next(),
@@ -24,7 +34,7 @@ export function createApp(deps: AppDeps, routes: RouteDef[] = [...healthRoutes],
   // trust every hop a client cares to prepend, which defeats per-IP rate limiting.
   app.set("trust proxy", 1);
   app.locals.deps = deps;
-  app.use(helmetModule.default({ contentSecurityPolicy: false }));
+  app.use(helmet({ contentSecurityPolicy: false }));
   app.use(requestId);
   app.use(requestLog(deps.logger));
   app.use(express.json({
