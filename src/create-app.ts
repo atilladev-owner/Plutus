@@ -8,6 +8,7 @@ import { errorHandler, notFoundHandler } from "./platform/error-handler.js";
 import { mountRoutes, type RouteDef, type RouteMiddleware } from "./platform/route.js";
 import { healthRoutes } from "./routes/health.js";
 import { mountDocs } from "./routes/docs.js";
+import { mountLanding } from "./routes/landing.js";
 
 type HelmetFactory = (options?: helmetModule.HelmetOptions) => RequestHandler;
 
@@ -59,6 +60,7 @@ export function createApp(deps: AppDeps, routes: RouteDef[] = [...healthRoutes],
   app.use(express.static("public"));
   mountRoutes(app, deps, routes, mw);
   mountDocs(app, deps);
+  mountLanding(app);
   app.use(notFoundHandler);
   app.use(errorHandler(deps.logger));
   return app;

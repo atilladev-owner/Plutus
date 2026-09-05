@@ -7,7 +7,7 @@ const Health = z.object({ status: z.enum(["ok", "degraded"]), version: z.string(
 async function timed(fn: () => Promise<unknown>): Promise<{ ok: boolean; latency_ms: number }> {
   const started = Date.now();
   try {
-    await Promise.race([fn(), new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 500))]);
+    await Promise.race([fn(), new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 2500))]);
     return { ok: true, latency_ms: Date.now() - started };
   } catch {
     return { ok: false, latency_ms: Date.now() - started };
