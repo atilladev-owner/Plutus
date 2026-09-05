@@ -7,6 +7,7 @@ import { ApiError, notFound } from "../domain/errors.js";
 import * as W from "../db/webhooks.js";
 import { IdParam, PageQuery, PagedOf } from "../schemas/common.js";
 import { EndpointCreate, EndpointPatch, EndpointOut, EndpointCreated, DeliveryOut } from "../schemas/webhooks.js";
+import { assertPublicWebhookUrl } from "../platform/webhook-url.js";
 
 const endpointOut = (e: W.EndpointRow) => ({ id: e.id, url: e.url, events: e.events, status: e.status, consecutive_failures: e.consecutive_failures, created_at: e.created_at.toISOString() });
 const deliveryOut = (d: W.DeliveryRow) => ({ id: d.id, event_id: d.event_id, attempt: d.attempt, status: d.status, response_status: d.response_status, response_excerpt: d.response_excerpt, next_attempt_at: d.next_attempt_at?.toISOString() ?? null, delivered_at: d.delivered_at?.toISOString() ?? null, created_at: d.created_at.toISOString() });
@@ -29,7 +30,12 @@ export const webhookRoutes = [
     handler: async ({ deps, key, params }) => withTx(deps.pool, async (c) => { const e = await W.getEndpoint(c, key!.id, params.id); if (!e) throw notFound("webhook endpoint"); return endpointOut(e); }) }),
   defineRoute({ method: "patch", path: "/v1/webhooks/{id}", summary: "Change an endpoint or re enable it", tag: "Webhooks", auth: "bearer", scope: "webhooks:manage",
     params: Params, body: EndpointPatch, response: EndpointOut,
-    handler: async ({ deps, key, params, body }) => withTx(deps.pool, async (c) => { const e = await W.updateEndpoint(c, key!.id, params.id, body); if (!e) throw notFound("webhook endpoint"); return endpointOut(e); }) }),
+    // EndpointCreate's superRefine only runs on creation; a URL change here needs the
+    // same SSRF check run by hand before it reaches the database.
+    handler: async ({ deps, key, params, body }) => {
+      if (body.url !== undefined) assertPublicWebhookUrl(body.url);
+      return withTx(deps.pool, async (c) => { const e = await W.updateEndpoint(c, key!.id, params.id, body); if (!e) throw notFound("webhook endpoint"); return endpointOut(e); });
+    } }),
   defineRoute({ method: "delete", path: "/v1/webhooks/{id}", summary: "Delete an endpoint and its deliveries", tag: "Webhooks", auth: "bearer", scope: "webhooks:manage", status: 204,
     params: Params, response: z.undefined(),
     handler: async ({ deps, key, params, res }) => { const ok = await withTx(deps.pool, (c) => W.deleteEndpoint(c, key!.id, params.id)); if (!ok) throw notFound("webhook endpoint"); res.status(204).end(); return undefined; } }),

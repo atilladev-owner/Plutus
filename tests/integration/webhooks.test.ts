@@ -24,6 +24,20 @@ function receiver(status: () => number): Promise<{ url: string; got: Received[];
   });
 }
 
+/** A receiver that answers 200 with a body far bigger than the 1024 byte excerpt cap. */
+function bigBodyReceiver(bytes: number): Promise<{ url: string; close: () => void }> {
+  return new Promise((resolve) => {
+    const server: Server = createServer((req, res) => {
+      req.on("data", () => {});
+      req.on("end", () => { res.statusCode = 200; res.end("x".repeat(bytes)); });
+    });
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address() as { port: number };
+      resolve({ url: `http://127.0.0.1:${addr.port}/hook`, close: () => server.close() });
+    });
+  });
+}
+
 describe("webhooks", () => {
   it("registers an endpoint, delivers a signed event, and the verifier accepts it", async () => {
     const { app, deps } = await makeTestApp();
@@ -34,10 +48,12 @@ describe("webhooks", () => {
     try {
       const k = await mintKey(app);
       const h = bearer(k.secret);
-      const ep = await request(app).post("/v1/webhooks").set(h).send({ url: rx.url.replace("http://", "https://"), events: ["transfer.posted"] });
+      // Registration requires a public https host, and the local receiver lives on
+      // 127.0.0.1 (loopback, refused by assertPublicWebhookUrl); register a public
+      // looking url instead and flip it to the real local receiver by direct SQL.
+      const ep = await request(app).post("/v1/webhooks").set(h).send({ url: "https://example.com/hook", events: ["transfer.posted"] });
       expect(ep.status).toBe(201);
       expect(ep.body.secret).toMatch(/^whsec_/);
-      // Tests may point at http; production requires https. Flip the stored url back for the local receiver.
       await deps.pool.query("update webhook_endpoints set url = $2 where id = $1", [ep.body.id, rx.url]);
       const l = (await request(app).post("/v1/ledgers").set(h).send({ name: "w" })).body;
       const a = (await request(app).post(`/v1/ledgers/${l.id}/accounts`).set(h).send({ asset: "GHS", name: "a" })).body;
@@ -102,5 +118,68 @@ describe("webhooks", () => {
     const patched = await request(app).patch(`/v1/webhooks/${ids[0]}`).set(h).send({ status: "active" });
     expect(patched.body).toMatchObject({ status: "active", consecutive_failures: 0 });
     expect((await request(app).delete(`/v1/webhooks/${ids[1]}`).set(h)).status).toBe(204);
+  });
+
+  it("refuses webhook urls that are not public https hosts", async () => {
+    const { app } = await makeTestApp();
+    const k = await mintKey(app);
+    const h = bearer(k.secret);
+    const bad = [
+      "https://169.254.169.254/x",
+      "https://localhost/x",
+      "https://10.0.0.1/x",
+      "https://[::1]/x",
+      "https://foo.internal/x",
+      "https://user:pw@example.com/x",
+    ];
+    for (const url of bad) {
+      const res = await request(app).post("/v1/webhooks").set(h).send({ url, events: ["*"] });
+      expect(res.status).toBe(422);
+    }
+    const ok = await request(app).post("/v1/webhooks").set(h).send({ url: "https://example.com/x", events: ["*"] });
+    expect(ok.status).toBe(201);
+  });
+
+  it("caps the stored response excerpt at 1024 bytes even when the endpoint sends far more", async () => {
+    const { app, deps } = await makeTestApp();
+    const scheduler = new MemoryScheduler();
+    deps.scheduler = scheduler;
+    const rx = await bigBodyReceiver(100_000);
+    try {
+      const k = await mintKey(app);
+      const h = bearer(k.secret);
+      const ep = (await request(app).post("/v1/webhooks").set(h).send({ url: "https://example.com/x", events: ["*"] })).body;
+      await deps.pool.query("update webhook_endpoints set url = $2 where id = $1", [ep.id, rx.url]);
+      const l = (await request(app).post("/v1/ledgers").set(h).send({ name: "w" })).body;
+      const a = (await request(app).post(`/v1/ledgers/${l.id}/accounts`).set(h).send({ asset: "GHS", name: "a" })).body;
+      await request(app).post(`/v1/ledgers/${l.id}/transfers`).set(h).send({ legs: [{ from: "world:GHS", to: a.id, asset: "GHS", amount: "100" }] });
+      const id = scheduler.scheduled[0]!.deliveryId;
+      await deliverOnce(deps, id);
+      const dl = (await request(app).get(`/v1/webhooks/${ep.id}/deliveries`).set(h)).body.data[0];
+      expect(dl.status).toBe("succeeded");
+      expect(Buffer.byteLength(dl.response_excerpt as string, "utf8")).toBeLessThanOrEqual(1024);
+    } finally { rx.close(); }
+  });
+
+  it("locks a delivery so two concurrent attempts only ever reach the endpoint once", async () => {
+    const { app, deps } = await makeTestApp();
+    const scheduler = new MemoryScheduler();
+    deps.scheduler = scheduler;
+    let hits = 0;
+    const rx = await receiver(() => { hits += 1; return 200; });
+    try {
+      const k = await mintKey(app);
+      const h = bearer(k.secret);
+      const ep = (await request(app).post("/v1/webhooks").set(h).send({ url: "https://example.com/x", events: ["*"] })).body;
+      await deps.pool.query("update webhook_endpoints set url = $2 where id = $1", [ep.id, rx.url]);
+      const l = (await request(app).post("/v1/ledgers").set(h).send({ name: "w" })).body;
+      const a = (await request(app).post(`/v1/ledgers/${l.id}/accounts`).set(h).send({ asset: "GHS", name: "a" })).body;
+      await request(app).post(`/v1/ledgers/${l.id}/transfers`).set(h).send({ legs: [{ from: "world:GHS", to: a.id, asset: "GHS", amount: "100" }] });
+      const id = scheduler.scheduled[0]!.deliveryId;
+      await Promise.all([deliverOnce(deps, id), deliverOnce(deps, id)]);
+      expect(hits).toBe(1);
+      const dl = (await request(app).get(`/v1/webhooks/${ep.id}/deliveries`).set(h)).body.data[0];
+      expect(dl).toMatchObject({ status: "succeeded", attempt: 1 });
+    } finally { rx.close(); }
   });
 });

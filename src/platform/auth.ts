@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { RequestHandler } from "express";
 import { ApiError, unauthorized } from "../domain/errors.js";
 import { findKeyBySecretHash, touchKey } from "../db/keys.js";
@@ -20,6 +20,16 @@ function base62(bytes: Buffer): string {
 
 export function hashSecret(secret: string): Buffer {
   return createHash("sha256").update(secret, "utf8").digest();
+}
+
+/** Constant time string equality for a shared secret comparison outside the database
+ * (the internal route's CRON_SECRET header, and Task 14's sweep). Hashing both sides
+ * first removes the length leak timingSafeEqual alone would still have on unequal
+ * length inputs, since it throws instead of comparing them. */
+export function safeEqual(a: string, b: string): boolean {
+  const ah = createHash("sha256").update(a, "utf8").digest();
+  const bh = createHash("sha256").update(b, "utf8").digest();
+  return timingSafeEqual(ah, bh);
 }
 
 export function generateSecret(mode: "test" | "live"): { secret: string; hash: Buffer; prefix: string; last4: string } {

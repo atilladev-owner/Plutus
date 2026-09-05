@@ -52,6 +52,21 @@ export async function getDelivery(c: PoolClient, id: string): Promise<(DeliveryR
   row.endpoint.created_at = new Date(row.endpoint.created_at);
   return row;
 }
+
+/** Same read as getDelivery, but locks the row for the caller's transaction and skips it
+ * instead of waiting if another worker already holds it: a manual retry racing a
+ * scheduled attempt, or a QStash redelivery, then finds no row and does nothing rather
+ * than posting the same delivery twice. Callers must hold the row (and so this delivery)
+ * for the whole attempt, HTTP call included, and release it by committing or rolling
+ * back the transaction they read it in. */
+export async function claimDelivery(c: PoolClient, id: string): Promise<(DeliveryRow & { endpoint: EndpointRow }) | null> {
+  const { rows } = await c.query<DeliveryRow & { endpoint: EndpointRow }>(
+    "select d.*, to_jsonb(e.*) as endpoint from webhook_deliveries d join webhook_endpoints e on e.id = d.endpoint_id where d.id = $1 for update of d skip locked", [id]);
+  const row = rows[0];
+  if (!row) return null;
+  row.endpoint.created_at = new Date(row.endpoint.created_at);
+  return row;
+}
 export async function recordAttempt(c: PoolClient, id: string, r: { attempt: number; status: DeliveryRow["status"]; responseStatus: number | null; excerpt: string | null; nextAttemptAt: Date | null }): Promise<void> {
   await c.query(
     `update webhook_deliveries set attempt = $2, status = $3, response_status = $4, response_excerpt = $5, next_attempt_at = $6,

@@ -11,6 +11,13 @@ const probeRoute = defineRoute({
   handler: async ({ body }) => ({ got: body?.name ?? null }),
 });
 
+const rawBodyProbe = defineRoute({
+  method: "post", path: "/probe-raw", summary: "echoes the exact bytes the body was sent as", tag: "Meta", auth: "none", limit: "none",
+  body: z.object({ delivery_id: z.string() }),
+  response: z.object({ raw: z.string() }),
+  handler: async ({ req }) => ({ raw: req.rawBody?.toString("utf8") ?? "" }),
+});
+
 describe("platform", () => {
   it("health reports both dependencies and a version", async () => {
     const { app } = await makeTestApp();
@@ -53,5 +60,12 @@ describe("platform", () => {
     const withBody = await request(app).post("/probe").send({ name: "x" });
     expect(withBody.status).toBe(200);
     expect(withBody.body).toEqual({ got: "x" });
+  });
+  it("keeps the raw request body bytes available, unchanged, for signature verification", async () => {
+    const { app } = await makeTestApp({}, [rawBodyProbe]);
+    const raw = '{ "delivery_id" :  "whd_0123456789abcdef0123456789abcdef" }';
+    const res = await request(app).post("/probe-raw").set("Content-Type", "application/json").send(raw);
+    expect(res.status).toBe(200);
+    expect(res.body.raw).toBe(raw);
   });
 });
