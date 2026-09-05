@@ -38,11 +38,12 @@ export const keyRoutes = [
     idempotent: true,
     body: z.object({}).optional(),
     response: KeyMinted,
-    handler: async ({ deps, key }) => {
+    handler: async ({ key, tx }) => tx(async (c) => {
       const s = generateSecret(key!.mode);
-      const row = await withTx(deps.pool, async (c) => { await rotateKey(c, key!.id, { secretHash: s.hash, last4: s.last4 }); return getKey(c, key!.id); });
+      await rotateKey(c, key!.id, { secretHash: s.hash, last4: s.last4 });
+      const row = await getKey(c, key!.id);
       if (!row) throw notFound("key");
       return { ...publicOf(row), secret: s.secret };
-    },
+    }),
   }),
 ];

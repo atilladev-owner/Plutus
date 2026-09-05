@@ -6,6 +6,14 @@ export interface IdemRow { key_id: string; idem_key: string; fingerprint: Buffer
  * Inserts a pending record. Returns the existing row instead if one is already there,
  * unless that row has been pending for over 60 seconds, in which case this takes it over:
  * a function killed mid request (serverless) would otherwise block the key for a full day.
+ * A takeover after 60 seconds assumes the first attempt is dead, not merely slow. That
+ * assumption does not follow from any single bound in this system: nothing here cancels
+ * the handler itself, and each statement it runs is only bounded by the pool's own 25
+ * second statement timeout, not by an overall deadline. It holds for the common case of a
+ * handler with one or two statements, but the residual risk is real: a handler that runs
+ * several statements in sequence under lock contention, each waiting close to the
+ * statement timeout before proceeding, can still be alive and working past 60 seconds,
+ * and a takeover then races a live attempt instead of replacing a dead one.
  * A returned row means we own it, fresh or taken over; no row means someone else holds it
  * and the caller falls back to the select below to decide between replay, in flight, and
  * reused.

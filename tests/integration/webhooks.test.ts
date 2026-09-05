@@ -51,6 +51,22 @@ function bigBodyReceiver(bytes: number): Promise<{ url: string; close: () => voi
 }
 
 describe("webhooks", () => {
+  it("replays the stored reply for a repeated Idempotency-Key instead of registering a second endpoint", async () => {
+    const { app, deps } = await makeTestApp();
+    const k = await mintKey(app);
+    const h = { ...bearer(k.secret), "Idempotency-Key": "endpoint-1" };
+    const a = await request(app).post("/v1/webhooks").set(h).send({ url: "https://example.com/hook", events: ["*"] });
+    const b = await request(app).post("/v1/webhooks").set(h).send({ url: "https://example.com/hook", events: ["*"] });
+    expect(a.status).toBe(201);
+    expect(b.status).toBe(201);
+    expect(b.body.id).toBe(a.body.id);
+    expect(b.body.secret).toBe(a.body.secret);
+    expect(b.headers["idempotent-replayed"]).toBe("true");
+    expect(a.headers["idempotent-replayed"]).toBeUndefined();
+    const { rows } = await deps.pool.query<{ n: string }>("select count(*)::text as n from webhook_endpoints where key_id = $1", [k.id]);
+    expect(rows[0]?.n).toBe("1");
+  });
+
   it("registers an endpoint, delivers a signed event, and the verifier accepts it", async () => {
     const { app, deps } = await makeTestApp();
     // Deliver at once when scheduled with zero delay, the way QStash would a moment later.

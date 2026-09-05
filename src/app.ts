@@ -1,6 +1,7 @@
 import express, { type Express, type Request, type RequestHandler } from "express";
 import * as helmetModule from "helmet";
 import type { AppDeps } from "./deps.js";
+import { cors } from "./platform/cors.js";
 import { requestId } from "./platform/request-id.js";
 import { requestLog } from "./platform/logger.js";
 import { errorHandler, notFoundHandler } from "./platform/error-handler.js";
@@ -35,6 +36,7 @@ export function createApp(deps: AppDeps, routes: RouteDef[] = [...healthRoutes],
   app.set("trust proxy", 1);
   app.locals.deps = deps;
   app.use(helmet({ contentSecurityPolicy: false }));
+  app.use(cors);
   app.use(requestId);
   app.use(requestLog(deps.logger));
   app.use(express.json({

@@ -21,9 +21,13 @@ const SweepOut = z.object({
 });
 
 /**
- * Daily housekeeping, in two transactions. The first expires holds whose time is up and
- * commits on its own. The second deletes idle sandbox ledgers and keys, purges old events
- * and expired idempotency records (each capped, see SWEEP_DELETE_CAP in the respective db
+ * Daily housekeeping, in three transactions. The first expires holds whose time is up and
+ * commits on its own. The second deletes idle sandbox ledgers and keys, alone: a ledger
+ * delete cascades to its accounts, transfers, legs, holds and journal rows, so against a
+ * large enough idle backlog it can run long enough on its own to hit the pool's 25 second
+ * statement timeout, and this way that timeout costs only this purge, not the event purge,
+ * the idempotency purge or the stale delivery republish. The third purges old events and
+ * expired idempotency records (each capped, see SWEEP_DELETE_CAP in the respective db
  * module), and republishes any delivery left pending past its due time (stalePending, in
  * src/db/webhooks.ts): one QStash message lost never costs a delivery, only a delay.
  * Guarded by CRON_SECRET compared in constant time; a missing secret refuses every call
@@ -43,16 +47,16 @@ async function sweep({ deps, req }: { deps: AppDeps; req: import("express").Requ
     for (const id of await L.ledgersWithExpiredHolds(c)) n += await L.expireHolds(c, id, null);
     return n;
   });
+  const idle = await withTx(deps.pool, (c) => L.deleteIdleSandbox(c));
   const out = await withTx(deps.pool, async (c) => {
-    const idle = await L.deleteIdleSandbox(c);
     const events = await purgeOld(c);
     const idem = await purgeExpired(c);
     const stale = await W.stalePending(c, 60);
-    return { deleted_ledgers: idle.ledgers, deleted_keys: idle.keys, deleted_events: events, deleted_idempotency: idem, stale };
+    return { deleted_events: events, deleted_idempotency: idem, stale };
   });
   for (const id of out.stale) await deps.scheduler.schedule(id, 0);
   const { stale, ...rest } = out;
-  return { expired_holds: expiredHolds, ...rest, republished_deliveries: stale.length };
+  return { expired_holds: expiredHolds, deleted_ledgers: idle.ledgers, deleted_keys: idle.keys, ...rest, republished_deliveries: stale.length };
 }
 
 export const internalRoutes = [

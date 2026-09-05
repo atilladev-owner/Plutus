@@ -185,8 +185,10 @@ export async function ledgersWithExpiredHolds(c: PoolClient): Promise<string[]> 
 
 /** Every sweep delete is capped at this many rows, so one run against a large backlog
  * finishes inside the pool's statement timeout instead of the backlog only growing. The
- * sweep runs daily, so what a single run cannot clear, the next one does. */
-export const SWEEP_DELETE_CAP = 5000;
+ * sweep runs daily, so what a single run cannot clear, the next one does. Lower than the
+ * events and idempotency caps because a ledger delete cascades to accounts, transfers,
+ * legs, holds and journal rows, so the same row count costs far more work per row. */
+export const SWEEP_DELETE_CAP = 500;
 
 /** Deletes sandbox ledgers idle 14 days and sandbox keys idle 30 days, per spec 9.2. Live
  * keys and their ledgers are never touched. Idle keys are selected, not deleted, before

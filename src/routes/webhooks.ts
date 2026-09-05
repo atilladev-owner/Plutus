@@ -16,7 +16,7 @@ const Params = z.object({ id: IdParam("whe") });
 export const webhookRoutes = [
   defineRoute({ method: "post", path: "/v1/webhooks", summary: "Register an endpoint. The secret is shown once", tag: "Webhooks", auth: "bearer", scope: "webhooks:manage", idempotent: true, status: 201,
     body: EndpointCreate, response: EndpointCreated,
-    handler: async ({ deps, key, body }) => withTx(deps.pool, async (c) => {
+    handler: async ({ key, body, tx }) => tx(async (c) => {
       if (key!.mode === "test" && (await W.countEndpoints(c, key!.id)) >= 5) throw new ApiError(409, "sandbox_limit_reached", "webhook endpoints per key: 5");
       const secret = `whsec_${randomBytes(24).toString("base64url")}`;
       const row = await W.insertEndpoint(c, { id: newId("whe"), keyId: key!.id, url: body.url, secret, events: body.events });

@@ -49,6 +49,28 @@ describe("platform", () => {
     expect(res.headers["x-powered-by"]).toBeUndefined();
     expect(res.headers["x-content-type-options"]).toBe("nosniff");
   });
+  it("answers a CORS preflight with 204 and no body, open to any origin", async () => {
+    const { app } = await makeTestApp();
+    const res = await request(app).options("/health").set("Origin", "https://example.com");
+    expect(res.status).toBe(204);
+    expect(res.body).toEqual({});
+    expect(res.text).toBe("");
+    expect(res.headers["access-control-allow-origin"]).toBe("*");
+    expect(res.headers["access-control-allow-methods"]).toBe("GET, POST, PATCH, DELETE, OPTIONS");
+    expect(res.headers["access-control-allow-headers"]).toBe("Authorization, Content-Type, Idempotency-Key");
+    expect(res.headers["access-control-max-age"]).toBe("86400");
+    expect(res.headers["access-control-allow-credentials"]).toBeUndefined();
+  });
+  it("carries CORS headers on an ordinary GET", async () => {
+    const { app } = await makeTestApp();
+    const res = await request(app).get("/health").set("Origin", "https://example.com");
+    expect(res.status).toBe(200);
+    expect(res.headers["access-control-allow-origin"]).toBe("*");
+    expect(res.headers["access-control-expose-headers"]).toBe(
+      "X-Request-Id, Plutus-Warning, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, Retry-After",
+    );
+    expect(res.headers["access-control-allow-credentials"]).toBeUndefined();
+  });
   it("requires a JSON content type only when a body is present", async () => {
     const { app } = await makeTestApp({}, [probeRoute]);
     const noBody = await request(app).post("/probe");

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
 import { makeTestApp } from "../helpers/app.js";
+import { mintKey, bearer } from "../helpers/keys.js";
 
 describe("keys", () => {
   it("mints a sandbox key once and never shows the secret again", async () => {
@@ -39,6 +40,22 @@ describe("keys", () => {
     expect((await request(app).get("/v1/keys/me").set("Authorization", `Bearer ${first.secret}`)).status).toBe(401);
     expect((await request(app).get("/v1/keys/me").set("Authorization", `Bearer ${rot.body.secret}`)).status).toBe(200);
   });
+  it("replays the stored reply for a repeated Idempotency-Key instead of rotating again", async () => {
+    const { app, deps } = await makeTestApp();
+    const k = await mintKey(app);
+    const h = { ...bearer(k.secret), "Idempotency-Key": "rotate-1" };
+    const a = await request(app).post("/v1/keys/rotate").set(h).send({});
+    const b = await request(app).post("/v1/keys/rotate").set(h).send({});
+    expect(a.status).toBe(201);
+    expect(b.status).toBe(201);
+    expect(b.body.id).toBe(a.body.id);
+    expect(b.body.secret).toBe(a.body.secret);
+    expect(b.headers["idempotent-replayed"]).toBe("true");
+    expect(a.headers["idempotent-replayed"]).toBeUndefined();
+    const { rows } = await deps.pool.query<{ n: string }>("select count(*)::text as n from api_key_old_secrets where key_id = $1", [k.id]);
+    expect(rows[0]?.n).toBe("1");
+  });
+
   it("lists assets without a key", async () => {
     const { app } = await makeTestApp();
     const res = await request(app).get("/v1/assets");
