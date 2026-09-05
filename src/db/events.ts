@@ -22,8 +22,15 @@ export async function getEventsByIds(c: PoolClient, ids: string[]): Promise<Even
   return rows;
 }
 
-/** Deletes events older than 30 days. Called by the daily sweep. */
+/** Capped so one sweep against a large backlog finishes inside the pool's statement
+ * timeout; the next daily run drains whatever is left. */
+export const SWEEP_DELETE_CAP = 5000;
+
+/** Deletes events older than 30 days, at most SWEEP_DELETE_CAP per call. Called by the daily sweep. */
 export async function purgeOld(c: PoolClient): Promise<number> {
-  const r = await c.query("delete from events where created_at < now() - interval '30 days'");
+  const r = await c.query(
+    `delete from events where id in (
+       select id from events where created_at < now() - interval '30 days' order by created_at limit $1
+     )`, [SWEEP_DELETE_CAP]);
   return r.rowCount ?? 0;
 }

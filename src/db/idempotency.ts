@@ -37,8 +37,18 @@ export async function abandon(c: PoolClient, keyId: string, idemKey: string): Pr
   await c.query("delete from idempotency_keys where key_id = $1 and idem_key = $2 and status = 'pending'", [keyId, idemKey]);
 }
 
-/** Deletes idempotency records past their expiry. Called by the daily sweep. */
+/** Capped so one sweep against a large backlog finishes inside the pool's statement
+ * timeout; the next daily run drains whatever is left. */
+export const SWEEP_DELETE_CAP = 5000;
+
+/** Deletes idempotency records past their expiry, at most SWEEP_DELETE_CAP per call.
+ * Called by the daily sweep. idempotency_keys has no single id column (its primary key is
+ * (key_id, idem_key)), so ctid, Postgres's own physical row identifier, selects the capped
+ * set instead. */
 export async function purgeExpired(c: PoolClient): Promise<number> {
-  const r = await c.query("delete from idempotency_keys where expires_at < now()");
+  const r = await c.query(
+    `delete from idempotency_keys where ctid in (
+       select ctid from idempotency_keys where expires_at < now() order by created_at limit $1
+     )`, [SWEEP_DELETE_CAP]);
   return r.rowCount ?? 0;
 }

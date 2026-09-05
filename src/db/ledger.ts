@@ -183,11 +183,33 @@ export async function ledgersWithExpiredHolds(c: PoolClient): Promise<string[]> 
   return rows.map((r) => r.ledger_id);
 }
 
+/** Every sweep delete is capped at this many rows, so one run against a large backlog
+ * finishes inside the pool's statement timeout instead of the backlog only growing. The
+ * sweep runs daily, so what a single run cannot clear, the next one does. */
+export const SWEEP_DELETE_CAP = 5000;
+
 /** Deletes sandbox ledgers idle 14 days and sandbox keys idle 30 days, per spec 9.2. Live
- * keys and their ledgers are never touched. Ledgers are deleted first: a key deleted while
- * it still owned ledgers would leave them orphaned instead of removed. */
+ * keys and their ledgers are never touched. Idle keys are selected, not deleted, before
+ * they are counted: ledgers.key_id cascades on delete, so a ledger removed that way would
+ * otherwise vanish from deleted_ledgers with nothing to show for it. Both the direct
+ * ledger delete and the idle key selection are capped at SWEEP_DELETE_CAP. */
 export async function deleteIdleSandbox(c: PoolClient): Promise<{ ledgers: number; keys: number }> {
-  const l = await c.query("delete from ledgers l using api_keys k where k.id = l.key_id and k.mode = 'test' and l.last_activity_at < now() - interval '14 days'");
-  const k = await c.query("delete from api_keys where mode = 'test' and coalesce(last_used_at, created_at) < now() - interval '30 days'");
-  return { ledgers: l.rowCount ?? 0, keys: k.rowCount ?? 0 };
+  const l = await c.query(
+    `delete from ledgers where id in (
+       select l.id from ledgers l join api_keys k on k.id = l.key_id
+       where k.mode = 'test' and l.last_activity_at < now() - interval '14 days'
+       order by l.created_at limit $1
+     )`, [SWEEP_DELETE_CAP]);
+  const idle = await c.query<{ id: string }>(
+    `select id from api_keys
+     where mode = 'test' and coalesce(last_used_at, created_at) < now() - interval '30 days'
+     order by created_at limit $1`, [SWEEP_DELETE_CAP]);
+  const idleIds = idle.rows.map((r) => r.id);
+  let cascaded = 0;
+  if (idleIds.length > 0) {
+    const { rows } = await c.query<{ n: string }>("select count(*)::text as n from ledgers where key_id = any($1)", [idleIds]);
+    cascaded = Number(rows[0]?.n ?? "0");
+  }
+  const k = idleIds.length > 0 ? await c.query("delete from api_keys where id = any($1)", [idleIds]) : null;
+  return { ledgers: (l.rowCount ?? 0) + cascaded, keys: k?.rowCount ?? 0 };
 }

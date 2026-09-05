@@ -21,28 +21,38 @@ const SweepOut = z.object({
 });
 
 /**
- * Daily housekeeping: expires holds whose time is up, deletes idle sandbox ledgers and
- * keys, purges old events and expired idempotency records, and republishes any delivery
- * left pending past its due time (stalePending, in src/db/webhooks.ts): one QStash
- * message lost never costs a delivery, only a delay. Guarded by CRON_SECRET compared in
- * constant time; a missing secret refuses every call rather than accepting one.
+ * Daily housekeeping, in two transactions. The first expires holds whose time is up and
+ * commits on its own. The second deletes idle sandbox ledgers and keys, purges old events
+ * and expired idempotency records (each capped, see SWEEP_DELETE_CAP in the respective db
+ * module), and republishes any delivery left pending past its due time (stalePending, in
+ * src/db/webhooks.ts): one QStash message lost never costs a delivery, only a delay.
+ * Guarded by CRON_SECRET compared in constant time; a missing secret refuses every call
+ * rather than accepting one.
  */
 async function sweep({ deps, req }: { deps: AppDeps; req: import("express").Request }) {
   const secret = deps.config.CRON_SECRET;
   const header = req.header("authorization") ?? "";
   if (!secret || !safeEqual(header, `Bearer ${secret}`)) throw new ApiError(401, "unauthorized", "internal route");
+  // Hold expiry commits in its own transaction before any purge runs. Each purge below is
+  // capped, but a large enough uncapped backlog elsewhere, or a slow plan, can still hit
+  // the pool's 25 second statement timeout; if that happened inside the same transaction
+  // as the hold expiry loop, the failure would roll back holds that had already, correctly,
+  // expired, and the next run would face the same backlog and fail the same way.
+  const expiredHolds = await withTx(deps.pool, async (c) => {
+    let n = 0;
+    for (const id of await L.ledgersWithExpiredHolds(c)) n += await L.expireHolds(c, id, null);
+    return n;
+  });
   const out = await withTx(deps.pool, async (c) => {
-    let expired = 0;
-    for (const id of await L.ledgersWithExpiredHolds(c)) expired += await L.expireHolds(c, id, null);
     const idle = await L.deleteIdleSandbox(c);
     const events = await purgeOld(c);
     const idem = await purgeExpired(c);
     const stale = await W.stalePending(c, 60);
-    return { expired_holds: expired, deleted_ledgers: idle.ledgers, deleted_keys: idle.keys, deleted_events: events, deleted_idempotency: idem, stale };
+    return { deleted_ledgers: idle.ledgers, deleted_keys: idle.keys, deleted_events: events, deleted_idempotency: idem, stale };
   });
   for (const id of out.stale) await deps.scheduler.schedule(id, 0);
   const { stale, ...rest } = out;
-  return { ...rest, republished_deliveries: stale.length };
+  return { expired_holds: expiredHolds, ...rest, republished_deliveries: stale.length };
 }
 
 export const internalRoutes = [

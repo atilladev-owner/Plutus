@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import request from "supertest";
 import { makeTestApp } from "../helpers/app.js";
 import { mintKey, bearer } from "../helpers/keys.js";
+import { SWEEP_DELETE_CAP } from "../../src/db/events.js";
 
 describe("the sweep", () => {
   it("refuses without the secret and reports what it did with it", async () => {
@@ -25,5 +26,27 @@ describe("the sweep", () => {
     expect(res.body.deleted_keys).toBeGreaterThanOrEqual(1);
     expect((await request(app).get("/v1/keys/me").set(bearer(idle.secret))).status).toBe(401);
     expect((await request(app).get(`/v1/ledgers/${l.id}/holds/${hold.id}`).set(h)).body.status).toBe("expired");
+  });
+
+  it("caps the events purge at SWEEP_DELETE_CAP and drains the rest on the next run", async () => {
+    const { app, deps } = await makeTestApp();
+    const k = await mintKey(app);
+    const l = (await request(app).post("/v1/ledgers").set(bearer(k.secret)).send({ name: "backlog" })).body;
+    const total = SWEEP_DELETE_CAP + 1;
+    await deps.pool.query(
+      `insert into events (id, key_id, ledger_id, type, entity_id, payload, created_at)
+       select 'evt_backlog_' || g, $1, $2, 'test.event', 'entity', '{}'::jsonb, now() - interval '31 days'
+       from generate_series(1, $3) g`,
+      [k.id, l.id, total],
+    );
+    const auth = { Authorization: `Bearer ${deps.config.CRON_SECRET}` };
+    const first = await request(app).get("/internal/sweep").set(auth);
+    expect(first.status).toBe(200);
+    expect(first.body.deleted_events).toBe(SWEEP_DELETE_CAP);
+    const second = await request(app).get("/internal/sweep").set(auth);
+    expect(second.status).toBe(200);
+    expect(second.body.deleted_events).toBe(1);
+    const { rows } = await deps.pool.query<{ n: string }>("select count(*)::text as n from events where id like 'evt_backlog_%'");
+    expect(rows[0]?.n).toBe("0");
   });
 });
