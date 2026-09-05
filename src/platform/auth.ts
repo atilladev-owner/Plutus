@@ -8,11 +8,13 @@ export type { AuthedKey } from "./route.js";
 
 const ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
+// 32 random bytes need exactly 43 base62 digits (62^43 exceeds 2^256); left pad with the
+// alphabet's zero character so a draw with leading zero digits never yields a short secret.
 function base62(bytes: Buffer): string {
   let n = BigInt("0x" + bytes.toString("hex"));
   let out = "";
   while (n > 0n) { out = ALPHABET[Number(n % 62n)] + out; n /= 62n; }
-  return out;
+  return out.padStart(43, ALPHABET[0]);
 }
 
 export function hashSecret(secret: string): Buffer {
@@ -25,7 +27,7 @@ export function generateSecret(mode: "test" | "live"): { secret: string; hash: B
   return { secret, hash: hashSecret(secret), prefix, last4: secret.slice(-4) };
 }
 
-const SECRET_RE = /^pl_(test|live)_[0-9A-Za-z]{40,48}$/;
+const SECRET_RE = /^pl_(test|live)_[0-9A-Za-z]{43}$/;
 
 export function bearerAuth(deps: AppDeps) {
   return (def: RouteDef): RequestHandler => async (req, res, next) => {
