@@ -67,7 +67,7 @@ describe("platform", () => {
     expect(res.status).toBe(200);
     expect(res.headers["access-control-allow-origin"]).toBe("*");
     expect(res.headers["access-control-expose-headers"]).toBe(
-      "X-Request-Id, Plutus-Warning, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, Retry-After",
+      "X-Request-Id, Plutus-Warning, Idempotent-Replayed, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, Retry-After",
     );
     expect(res.headers["access-control-allow-credentials"]).toBeUndefined();
   });
