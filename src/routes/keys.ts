@@ -35,6 +35,7 @@ export const keyRoutes = [
   }),
   defineRoute({
     method: "post", path: "/v1/keys/rotate", summary: "Rotate the secret. The old one works for fifteen more minutes", tag: "Keys", auth: "bearer", status: 201,
+    idempotent: true,
     body: z.object({}).optional(),
     response: KeyMinted,
     handler: async ({ deps, key }) => {
