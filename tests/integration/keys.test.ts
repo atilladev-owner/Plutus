@@ -35,8 +35,9 @@ describe("keys", () => {
     expect(rot.body.secret).not.toBe(first.secret);
     expect((await request(app).get("/v1/keys/me").set("Authorization", `Bearer ${rot.body.secret}`)).status).toBe(200);
     expect((await request(app).get("/v1/keys/me").set("Authorization", `Bearer ${first.secret}`)).status).toBe(200);
-    await deps.pool.query("update api_keys set expires_at = now() - interval '1 second' where id = $1 and expires_at is not null", [first.id]);
+    await deps.pool.query("update api_key_old_secrets set expires_at = now() - interval '1 second' where key_id = $1", [first.id]);
     expect((await request(app).get("/v1/keys/me").set("Authorization", `Bearer ${first.secret}`)).status).toBe(401);
+    expect((await request(app).get("/v1/keys/me").set("Authorization", `Bearer ${rot.body.secret}`)).status).toBe(200);
   });
   it("lists assets without a key", async () => {
     const { app } = await makeTestApp();

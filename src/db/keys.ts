@@ -2,16 +2,20 @@ import type { PoolClient } from "pg";
 
 export interface KeyRow { id: string; secret_hash: Buffer; prefix: string; last4: string; mode: "test" | "live"; scopes: string[]; created_at: Date; last_used_at: Date | null; expires_at: Date | null; revoked_at: Date | null }
 
-// Sandbox (test mode) keys are free to mint with no auth, so they carry a bounded
-// lifetime; live keys, minted only through the internal script, do not expire here.
 export async function insertKey(c: PoolClient, row: { id: string; secretHash: Buffer; prefix: string; last4: string; mode: "test" | "live"; scopes: string[] }): Promise<KeyRow> {
   const { rows } = await c.query<KeyRow>(
-    "insert into api_keys (id, secret_hash, prefix, last4, mode, scopes, expires_at) values ($1, $2, $3, $4, $5, $6, case when $5 = 'test' then now() + interval '90 days' else null end) returning *",
+    "insert into api_keys (id, secret_hash, prefix, last4, mode, scopes) values ($1, $2, $3, $4, $5, $6) returning *",
     [row.id, row.secretHash, row.prefix, row.last4, row.mode, row.scopes]);
   return rows[0] as KeyRow;
 }
 
-/** The current secret, or a retiring one still inside its grace period. A key past its own expires_at authenticates with neither. */
+/**
+ * The current secret, or a retiring one still inside its grace period. A key's own
+ * expires_at is not set by minting or rotation today (idle sandbox keys are removed by a
+ * separate sweep, not by a fixed lifetime); the clause below is defence in depth for
+ * whichever future feature does set it, so an expired key authenticates with neither its
+ * current nor a retiring secret.
+ */
 export async function findKeyBySecretHash(c: PoolClient, hash: Buffer): Promise<KeyRow | null> {
   const { rows } = await c.query<KeyRow>(
     `select k.*, $1::bytea as secret_hash from api_keys k
