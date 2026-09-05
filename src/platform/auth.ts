@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { RequestHandler } from "express";
 import { ApiError, unauthorized } from "../domain/errors.js";
 import { findKeyBySecretHash, touchKey } from "../db/keys.js";
+import { disabledEndpoints } from "../db/webhooks.js";
 import type { AppDeps } from "../deps.js";
 import type { RouteDef, AuthedKey } from "./route.js";
 export type { AuthedKey } from "./route.js";
@@ -48,6 +49,8 @@ export function bearerAuth(deps: AppDeps) {
         if (row) {
           key = { id: row.id, mode: row.mode, scopes: row.scopes, prefix: row.prefix, last4: row.last4 };
           await touchKey(client, row.id);
+          const disabled = await disabledEndpoints(client, row.id);
+          if (disabled.length > 0) res.setHeader("Plutus-Warning", `disabled webhook endpoints: ${disabled.join(",")}`);
         }
       } finally {
         client.release();

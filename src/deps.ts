@@ -3,9 +3,10 @@ import type { Config } from "./config.js";
 import { loadConfig } from "./config.js";
 import { createPool } from "./db/pool.js";
 import { MemoryRateLimiter, UpstashRateLimiter, type RateLimiter } from "./platform/ratelimit.js";
-import { MemoryScheduler, type DeliveryScheduler } from "./platform/scheduler.js";
+import { MemoryScheduler, QStashScheduler, type DeliveryScheduler } from "./platform/scheduler.js";
 import { MemoryCache, UpstashCache, type Cache } from "./platform/cache.js";
 import { createLogger, type Logger } from "./platform/logger.js";
+import { deliverOnce } from "./platform/deliver.js";
 
 export interface AppDeps {
   pool: Pool;
@@ -29,7 +30,14 @@ export function buildProductionDeps(env: NodeJS.ProcessEnv = process.env): AppDe
     ? new UpstashCache(config.UPSTASH_REDIS_REST_URL!, config.UPSTASH_REDIS_REST_TOKEN!)
     : new MemoryCache();
   logger.info({ cache: hasUpstash ? "upstash" : "memory" }, "cache selected");
-  return {
+  // deliverOnce takes deps by reference, and the memory scheduler's fallback closes over
+  // deliverOnce(deps, id). deps cannot appear in its own initializer, so it is built first
+  // with a placeholder scheduler and the real one is assigned right after: the memory
+  // scheduler's closure only reads deps.pool etc. once schedule() actually runs, which is
+  // always after this function has returned. deliver.ts only imports AppDeps as a type,
+  // which TypeScript erases from the compiled output, so there is no runtime import cycle
+  // between deps.ts and platform/deliver.ts despite the logical dependency each way.
+  const deps: AppDeps = {
     pool: createPool(config.DATABASE_URL),
     limiter,
     scheduler: new MemoryScheduler(),
@@ -37,4 +45,10 @@ export function buildProductionDeps(env: NodeJS.ProcessEnv = process.env): AppDe
     logger,
     config,
   };
+  const hasQStash = Boolean(config.QSTASH_TOKEN);
+  deps.scheduler = hasQStash
+    ? new QStashScheduler(config.QSTASH_TOKEN!, `${config.PUBLIC_BASE_URL}/internal/webhooks/deliver`)
+    : new MemoryScheduler((id) => deliverOnce(deps, id));
+  logger.info({ scheduler: hasQStash ? "qstash" : "memory" }, "scheduler selected");
+  return deps;
 }
