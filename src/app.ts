@@ -16,7 +16,11 @@ const passThrough: RouteMiddleware = {
 export function createApp(deps: AppDeps, routes: RouteDef[] = [...healthRoutes], mw: RouteMiddleware = passThrough): Express {
   const app = express();
   app.disable("x-powered-by");
-  app.set("trust proxy", true);
+  // Exactly one hop: Vercel's edge is the only proxy in front of us. "1" makes Express trust
+  // only the address that hop appended to X-Forwarded-For and derive req.ip from it, so a
+  // client cannot forge earlier hops (or X-Real-IP) to spoof its own address. `true` would
+  // trust every hop a client cares to prepend, which defeats per-IP rate limiting.
+  app.set("trust proxy", 1);
   app.locals.deps = deps;
   app.use(helmet({ contentSecurityPolicy: false }));
   app.use(requestId);

@@ -90,7 +90,7 @@ export function mountRoutes(app: Express, deps: AppDeps, routes: RouteDef[], mw:
           params: params.data as never, query: query.data as never, body: body as never,
           key: (res.locals.key as AuthedKey | undefined) ?? null,
           requestId: res.locals.requestId as string,
-          ip: req.header("x-real-ip") ?? req.ip ?? "0.0.0.0",
+          ip: req.ip ?? "0.0.0.0",
           deps, req, res,
         });
         if (res.headersSent) return;

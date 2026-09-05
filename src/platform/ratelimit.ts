@@ -57,16 +57,19 @@ export function rateLimitMiddleware(deps: AppDeps) {
       if (mode === "none") return next();
       const key = res.locals.key as AuthedKey | undefined;
       const bucket: RateBucket = mode === "standard" ? (key?.mode === "live" ? "live" : "sandbox") : mode;
-      const id = key?.id ?? req.header("x-real-ip") ?? req.ip ?? "unknown";
+      const id = key?.id ?? req.ip ?? "unknown";
       let result: RateResult;
+      let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         result = await Promise.race([
           deps.limiter.limit(bucket, id),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("limiter timeout")), 500)),
+          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("limiter timeout")), 500); }),
         ]);
       } catch (err) {
         deps.logger.error({ err: (err as Error).message }, "rate limiter unavailable");
         throw new ApiError(503, "rate_limiter_unavailable", "the rate limiter is unreachable; try again shortly");
+      } finally {
+        clearTimeout(timer);
       }
       const msLeft = result.resetAt - Date.now();
       const resetSeconds = msLeft <= 0 ? 1 : Math.trunc((msLeft + 999) / 1000);
