@@ -21,3 +21,9 @@ export async function getEventsByIds(c: PoolClient, ids: string[]): Promise<Even
   const { rows } = await c.query<EventRow>("select * from events where id = any($1)", [ids]);
   return rows;
 }
+
+/** Deletes events older than 30 days. Called by the daily sweep. */
+export async function purgeOld(c: PoolClient): Promise<number> {
+  const r = await c.query("delete from events where created_at < now() - interval '30 days'");
+  return r.rowCount ?? 0;
+}

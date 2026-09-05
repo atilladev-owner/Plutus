@@ -36,3 +36,9 @@ export async function complete(c: PoolClient, keyId: string, idemKey: string, st
 export async function abandon(c: PoolClient, keyId: string, idemKey: string): Promise<void> {
   await c.query("delete from idempotency_keys where key_id = $1 and idem_key = $2 and status = 'pending'", [keyId, idemKey]);
 }
+
+/** Deletes idempotency records past their expiry. Called by the daily sweep. */
+export async function purgeExpired(c: PoolClient): Promise<number> {
+  const r = await c.query("delete from idempotency_keys where expires_at < now()");
+  return r.rowCount ?? 0;
+}

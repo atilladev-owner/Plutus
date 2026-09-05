@@ -4,8 +4,50 @@ import { defineRoute } from "../platform/route.js";
 import { ApiError } from "../domain/errors.js";
 import { deliverOnce } from "../platform/deliver.js";
 import { safeEqual } from "../platform/auth.js";
+import type { AppDeps } from "../deps.js";
+import { withTx } from "../db/pool.js";
+import * as L from "../db/ledger.js";
+import * as W from "../db/webhooks.js";
+import { purgeOld } from "../db/events.js";
+import { purgeExpired } from "../db/idempotency.js";
+
+const SweepOut = z.object({
+  expired_holds: z.number().int(),
+  deleted_ledgers: z.number().int(),
+  deleted_keys: z.number().int(),
+  deleted_events: z.number().int(),
+  deleted_idempotency: z.number().int(),
+  republished_deliveries: z.number().int(),
+});
+
+/**
+ * Daily housekeeping: expires holds whose time is up, deletes idle sandbox ledgers and
+ * keys, purges old events and expired idempotency records, and republishes any delivery
+ * left pending past its due time (stalePending, in src/db/webhooks.ts): one QStash
+ * message lost never costs a delivery, only a delay. Guarded by CRON_SECRET compared in
+ * constant time; a missing secret refuses every call rather than accepting one.
+ */
+async function sweep({ deps, req }: { deps: AppDeps; req: import("express").Request }) {
+  const secret = deps.config.CRON_SECRET;
+  const header = req.header("authorization") ?? "";
+  if (!secret || !safeEqual(header, `Bearer ${secret}`)) throw new ApiError(401, "unauthorized", "internal route");
+  const out = await withTx(deps.pool, async (c) => {
+    let expired = 0;
+    for (const id of await L.ledgersWithExpiredHolds(c)) expired += await L.expireHolds(c, id, null);
+    const idle = await L.deleteIdleSandbox(c);
+    const events = await purgeOld(c);
+    const idem = await purgeExpired(c);
+    const stale = await W.stalePending(c, 60);
+    return { expired_holds: expired, deleted_ledgers: idle.ledgers, deleted_keys: idle.keys, deleted_events: events, deleted_idempotency: idem, stale };
+  });
+  for (const id of out.stale) await deps.scheduler.schedule(id, 0);
+  const { stale, ...rest } = out;
+  return { ...rest, republished_deliveries: stale.length };
+}
 
 export const internalRoutes = [
+  defineRoute({ method: "get", path: "/internal/sweep", summary: "Daily housekeeping", tag: "Internal", auth: "none", limit: "none", response: SweepOut, handler: sweep }),
+  defineRoute({ method: "post", path: "/internal/sweep", summary: "Daily housekeeping", tag: "Internal", auth: "none", limit: "none", response: SweepOut, handler: sweep }),
   defineRoute({
     method: "post", path: "/internal/webhooks/deliver", summary: "QStash callback that makes one delivery attempt", tag: "Internal", auth: "none", limit: "none",
     body: z.object({ delivery_id: z.string().regex(/^whd_[0-9a-f]{32}$/) }), response: z.object({ ok: z.boolean() }),

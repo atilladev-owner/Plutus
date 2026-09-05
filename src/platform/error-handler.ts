@@ -1,6 +1,7 @@
 import type { ErrorRequestHandler, RequestHandler } from "express";
 import { ApiError } from "../domain/errors.js";
 import { mapDbError } from "../db/errors.js";
+import { captureError } from "./sentry.js";
 import type { Logger } from "./logger.js";
 
 const TITLES: Record<number, string> = {
@@ -36,7 +37,11 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
     const e = err as { type?: string; status?: number; message?: string };
     if (e?.type === "entity.parse.failed") return sendProblem(res, new ApiError(400, "validation_failed", "the request body is not valid JSON"));
     if (e?.type === "entity.too.large") return sendProblem(res, new ApiError(413, "payload_too_large", "the request body exceeds 64 KB"));
-    logger.error({ request_id: res.locals.requestId as string, err: e?.message ?? String(err) }, "unhandled");
+    const requestId = res.locals.requestId as string;
+    logger.error({ request_id: requestId, err: e?.message ?? String(err) }, "unhandled");
+    // Only this branch is a genuinely unexpected error: every ApiError above, and every
+    // mapped DB error, is a refusal the caller already understands and handled.
+    captureError(err, requestId);
     sendProblem(res, new ApiError(500, "internal_error", "something went wrong on our side; quote the request id"));
   };
 }

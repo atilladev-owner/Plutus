@@ -172,3 +172,22 @@ export async function listJournal(c: PoolClient, ledgerId: string, sinceSeq: big
     [ledgerId, sinceSeq.toString(), limit]);
   return rows;
 }
+
+/** Ledgers with at least one hold whose expiry has passed and is still open, one row per
+ * ledger regardless of how many holds qualify. The sweep expires each ledger's holds in
+ * its own call to expire_holds, which locks per ledger, so this only needs to name which
+ * ledgers to visit. Capped at 500 so one sweep never holds the transaction open across an
+ * unbounded backlog; the next sweep, an hour later, picks up whatever is left. */
+export async function ledgersWithExpiredHolds(c: PoolClient): Promise<string[]> {
+  const { rows } = await c.query<{ ledger_id: string }>("select distinct ledger_id from holds where status = 'open' and expires_at <= now() limit 500");
+  return rows.map((r) => r.ledger_id);
+}
+
+/** Deletes sandbox ledgers idle 14 days and sandbox keys idle 30 days, per spec 9.2. Live
+ * keys and their ledgers are never touched. Ledgers are deleted first: a key deleted while
+ * it still owned ledgers would leave them orphaned instead of removed. */
+export async function deleteIdleSandbox(c: PoolClient): Promise<{ ledgers: number; keys: number }> {
+  const l = await c.query("delete from ledgers l using api_keys k where k.id = l.key_id and k.mode = 'test' and l.last_activity_at < now() - interval '14 days'");
+  const k = await c.query("delete from api_keys where mode = 'test' and coalesce(last_used_at, created_at) < now() - interval '30 days'");
+  return { ledgers: l.rowCount ?? 0, keys: k.rowCount ?? 0 };
+}
