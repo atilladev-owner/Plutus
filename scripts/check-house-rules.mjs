@@ -24,7 +24,7 @@ function walk(root, dir, out) {
     const full = join(dir, name);
     const st = statSync(full);
     if (st.isDirectory()) walk(root, full, out);
-    else if (TEXT_EXT.has(extname(name)) || name.startsWith(".env")) out.push(full);
+    else if (TEXT_EXT.has(extname(name)) || name === ".env.example") out.push(full);
   }
 }
 
