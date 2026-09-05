@@ -3,6 +3,7 @@ import { z, type ZodType } from "zod";
 import type { AppDeps } from "../deps.js";
 import { ApiError, validation } from "../domain/errors.js";
 import { decodeCursor, type Cursor } from "../domain/cursor.js";
+import { complete } from "../db/idempotency.js";
 import type { RateBucket } from "./ratelimit.js";
 
 export interface AuthedKey { id: string; mode: "test" | "live"; scopes: string[]; prefix: string; last4: string }
@@ -94,7 +95,18 @@ export function mountRoutes(app: Express, deps: AppDeps, routes: RouteDef[], mw:
           deps, req, res,
         });
         if (res.headersSent) return;
-        res.status(res.statusCode !== 200 ? res.statusCode : (def.status ?? 200)).json(out);
+        const status = res.statusCode !== 200 ? res.statusCode : (def.status ?? 200);
+        const idem = res.locals.idem;
+        if (idem) {
+          const client = await deps.pool.connect();
+          try {
+            await complete(client, idem.keyId, idem.idemKey, status, out);
+            idem.stored = true;
+          } finally {
+            client.release();
+          }
+        }
+        res.status(status).json(out);
       } catch (err) {
         next(err);
       }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { canonicalJson, hashEntry, GENESIS_HASH } from "../../src/domain/canonical.js";
+import { canonicalJson, stableJson, hashEntry, GENESIS_HASH } from "../../src/domain/canonical.js";
 
 describe("canonicalJson", () => {
   it("sorts keys bytewise and strips whitespace, recursively", () => {
@@ -14,6 +14,18 @@ describe("canonicalJson", () => {
   });
   it("keeps non ascii as is", () => {
     expect(canonicalJson({ s: "cedi ₵" })).toBe('{"s":"cedi ₵"}');
+  });
+});
+
+describe("stableJson", () => {
+  it("sorts keys bytewise and serialises a finite non integer number instead of throwing", () => {
+    const a = stableJson({ b: 1.5, a: 2 });
+    const b = stableJson({ a: 2, b: 1.5 });
+    expect(a).toBe(b);
+    expect(a).toBe('{"a":2,"b":1.5}');
+  });
+  it("omits undefined object values the way JSON.stringify does", () => {
+    expect(stableJson({ a: 1, b: undefined })).toBe('{"a":1}');
   });
 });
 

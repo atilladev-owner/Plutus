@@ -1,8 +1,8 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { RequestHandler } from "express";
 import { ApiError, validation } from "../domain/errors.js";
-import { canonicalJson, type JsonValue } from "../domain/canonical.js";
-import { claim, complete, abandon } from "../db/idempotency.js";
+import { stableJson } from "../domain/canonical.js";
+import { claim, abandon } from "../db/idempotency.js";
 import type { AppDeps } from "../deps.js";
 import type { RouteDef, AuthedKey } from "./route.js";
 
@@ -13,14 +13,10 @@ export function idempotencyMiddleware(deps: AppDeps) {
       const key = res.locals.key as AuthedKey | undefined;
       if (!def.idempotent || !idem || !key) return next();
       if (idem.length > 255) throw validation("Idempotency-Key must be 1 to 255 characters");
-      let bodyCanonical = "";
-      try { bodyCanonical = canonicalJson((req.body ?? {}) as JsonValue); } catch { bodyCanonical = JSON.stringify(req.body ?? {}); }
-      const fingerprint = createHash("sha256").update(`${req.method}\n${req.path}\n${bodyCanonical}`).digest();
+      const fingerprint = createHash("sha256").update(`${req.method}\n${req.path}\n${stableJson(req.body ?? null)}`).digest();
       const client = await deps.pool.connect();
-      let claimed = false;
       try {
         const r = await claim(client, key.id, idem, fingerprint);
-        claimed = r.claimed;
         if (!r.claimed) {
           if (!timingSafeEqual(r.row.fingerprint, fingerprint)) throw new ApiError(409, "idempotency_key_reused", "this Idempotency-Key was already used with a different request");
           if (r.row.status === "pending") throw new ApiError(409, "idempotency_in_flight", "a request with this Idempotency-Key is still being processed");
@@ -31,19 +27,26 @@ export function idempotencyMiddleware(deps: AppDeps) {
       } finally {
         client.release();
       }
-      // Capture the response this request produces and store it.
-      const originalJson = res.json.bind(res);
-      res.json = ((body: unknown) => {
-        const status = res.statusCode;
+      // mountRoutes stores the answer (see src/platform/route.ts) and flips stored to true
+      // before it ever sends the response, so a replay can never observe "pending" for a
+      // request that already finished. Whichever of these two events fires first releases
+      // the claim exactly once: a normal error response (sendProblem uses res.send, never
+      // res.json, so stored stays false) on "finish", or a dropped connection on "close".
+      // Node always emits "close" after "finish" too, so the guard flag keeps this from
+      // running twice on the ordinary path.
+      res.locals.idem = { keyId: key.id, idemKey: idem, stored: false };
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        if (res.locals.idem?.stored) return;
         void (async () => {
           const c = await deps.pool.connect();
-          try { if (status < 500) await complete(c, key.id, idem, status, body); else await abandon(c, key.id, idem); } finally { c.release(); }
-        })().catch((err: unknown) => deps.logger.error({ err: (err as Error).message }, "idempotency store failed"));
-        return originalJson(body);
-      }) as typeof res.json;
-      res.on("close", () => {
-        if (claimed && !res.writableFinished) void deps.pool.connect().then((c) => abandon(c, key.id, idem).finally(() => c.release()));
-      });
+          try { await abandon(c, key.id, idem); } finally { c.release(); }
+        })().catch((err: unknown) => deps.logger.error({ err: (err as Error).message }, "idempotency release failed"));
+      };
+      res.on("finish", release);
+      res.on("close", release);
       next();
     } catch (err) {
       next(err);

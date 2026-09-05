@@ -5,6 +5,7 @@ declare global {
     interface Locals {
       requestId: string;
       key?: AuthedKey;
+      idem?: { keyId: string; idemKey: string; stored: boolean };
     }
   }
 }
