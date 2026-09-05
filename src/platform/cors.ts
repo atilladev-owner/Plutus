@@ -10,7 +10,7 @@ import type { RequestHandler } from "express";
  * code has to get right per origin.
  *
  * Depends on nothing but express's own types, so it can sit directly after helmet in
- * src/app.ts with no risk of it or its dependents mattering to load order.
+ * src/create-app.ts with no risk of it or its dependents mattering to load order.
  */
 export const cors: RequestHandler = (req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
