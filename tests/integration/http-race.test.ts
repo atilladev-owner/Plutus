@@ -15,8 +15,21 @@ describe("the race, through the API", () => {
     const hold = (await request(app).post(`/v1/ledgers/${l.id}/holds`).set(h).send({ account: a.id, amount: "500" })).body;
     const results = await Promise.all(Array.from({ length: 12 }, () =>
       request(app).post(`/v1/ledgers/${l.id}/holds/${hold.id}/capture`).set(h).send({ to: b.id, amount: "100" })));
+    // Every response must be a genuine capture or a genuine refusal; a pool timeout
+    // surfacing as a 500 would otherwise just shift the counts below and read like a
+    // ledger bug instead of the infrastructure problem it actually is. Five hundred
+    // divides evenly by the hundred each capture asks for, so the fifth winner always
+    // closes the hold in the same statement that brings its remaining to zero; every
+    // loser after that sees a closed hold, not a short one, so post_transfer's status
+    // check fires before its remaining check ever would. The seven losers are always
+    // hold_not_open here, never insufficient_funds; both are genuine 409 refusals, so
+    // the assertion accepts either rather than asserting the one this race cannot
+    // actually produce.
+    for (const r of results) expect([200, 409]).toContain(r.status);
     expect(results.filter((r) => r.status === 200)).toHaveLength(5);
-    expect(results.filter((r) => r.status === 409)).toHaveLength(7);
+    const overdrawn = results.filter((r) => r.status === 409);
+    expect(overdrawn).toHaveLength(7);
+    for (const r of overdrawn) expect(["insufficient_funds", "hold_not_open"]).toContain(r.body.code);
     const bb = await request(app).get(`/v1/ledgers/${l.id}/accounts/${b.id}`).set(h);
     expect(bb.body.balance).toBe("500");
     const v = await request(app).get(`/v1/ledgers/${l.id}/verify`).set(h);

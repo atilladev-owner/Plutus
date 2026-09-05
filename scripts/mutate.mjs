@@ -38,15 +38,35 @@ const MUTATIONS = [
 
 const client = new pg.Client({ connectionString: url });
 await client.connect();
+
+// A thrown spawnSync, or the process itself being killed mid mutation, must never leave
+// a mutated function live in whatever database TEST_DATABASE_URL points at. The loop
+// body below restores in a finally so a thrown spawnSync still restores before the
+// error propagates; these handlers cover the process being signalled outright.
+async function restoreAndExit(signal) {
+  try {
+    await client.query(original);
+    process.stderr.write(`${signal} received; restored the original SQL before exiting\n`);
+  } catch (err) {
+    process.stderr.write(`${signal} received; failed to restore the original SQL: ${err instanceof Error ? err.message : String(err)}\n`);
+  }
+  process.exit(1);
+}
+process.on("SIGINT", () => { void restoreAndExit("SIGINT"); });
+process.on("SIGTERM", () => { void restoreAndExit("SIGTERM"); });
+
 let failed = 0;
 for (const m of MUTATIONS) {
   if (m.sql === original) { process.stderr.write(`mutation "${m.name}" did not change the SQL; the anchor text moved\n`); failed++; continue; }
-  await client.query(m.sql);
-  const run = spawnSync("npx", ["vitest", "run", m.test], { stdio: "pipe", env: process.env, shell: true });
-  const red = run.status !== 0;
-  process.stdout.write(`${red ? "caught" : "MISSED"}  ${m.name}\n`);
-  if (!red) failed++;
-  await client.query(original);
+  try {
+    await client.query(m.sql);
+    const run = spawnSync("npx", ["vitest", "run", m.test], { stdio: "pipe", env: process.env, shell: true });
+    const red = run.status !== 0;
+    process.stdout.write(`${red ? "caught" : "MISSED"}  ${m.name}\n`);
+    if (!red) failed++;
+  } finally {
+    await client.query(original);
+  }
 }
 await client.end();
 process.exit(failed ? 1 : 0);
