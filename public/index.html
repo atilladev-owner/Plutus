@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plutus</title>
+<meta name="description" content="A ledger you can audit and an exchange you can trade against.">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ground: #FBFAF7;
+    --ink: #1F2A24;
+    --accent: #1C6E4A;
+    --muted: #5D6B63;
+    --panel: #F2F2EF;
+    --border: rgba(31, 42, 36, 0.14);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #141915;
+      --ink: #EEF2EE;
+      --accent: #7CC7A0;
+      --muted: #93AC9F;
+      --panel: #1F2420;
+      --border: rgba(238, 242, 238, 0.16);
+    }
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { background: var(--ground); }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Nunito", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: clamp(32px, 8vw, 72px) 24px 56px;
+  }
+  h1 {
+    font-family: "Outfit", system-ui, sans-serif;
+    font-weight: 700;
+    font-size: clamp(30px, 6vw, 36px);
+    letter-spacing: -0.01em;
+    margin: 0 0 28px;
+  }
+  p.lede {
+    font-family: "Outfit", system-ui, sans-serif;
+    font-weight: 500;
+    font-size: clamp(18px, 2.4vw, 21px);
+    line-height: 1.5;
+    max-width: 36ch;
+    margin: 0 0 32px;
+  }
+  .copy { margin: 0 0 40px; }
+  .copy p {
+    font-size: 16px;
+    line-height: 1.75;
+    max-width: 60ch;
+    margin: 0 0 16px;
+  }
+  .copy p:last-child { margin-bottom: 0; }
+  .label {
+    font-family: "Outfit", system-ui, sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 12px;
+  }
+  .quickstart {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 22px;
+    overflow-x: auto;
+    margin: 0 0 40px;
+  }
+  .quickstart pre {
+    margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13.5px;
+    line-height: 1.75;
+    white-space: pre;
+    color: var(--ink);
+  }
+  .quickstart .rem { color: var(--muted); }
+  nav.links {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 20px;
+    row-gap: 8px;
+    font-family: "Outfit", system-ui, sans-serif;
+    font-size: 15px;
+    margin: 0 0 28px;
+  }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:hover { color: var(--ink); }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+  p.licence {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--muted);
+    margin: 0;
+  }
+  p.licence a { color: var(--muted); }
+  p.licence a:hover { color: var(--ink); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>plutus</h1>
+    <p class="lede">A ledger you can audit and an exchange you can trade against.</p>
+    <div class="copy">
+      <p>Plutus is a ledger, and from milestone two a paper trading exchange, built as a single API. Mint a key with no signup, open a ledger, and move money between accounts under invariants the database enforces itself.</p>
+      <p>Every amount is an integer count of the asset's smallest unit, never a float. Each write, a transfer, a hold, a capture, runs as one Postgres function under row locks, so two requests racing for the same balance cannot both win.</p>
+      <p>Every write also appends to a hash chained journal. Each entry commits the hash of the one before it, so one request can prove the whole history is intact, not only the balances it left behind.</p>
+    </div>
+    <p class="label">Thirty seconds</p>
+    <div class="quickstart"><pre><code><span class="rem"># 1. a key, no signup</span>
+curl -s -X POST https://PLUTUS_HOST/v1/keys
+<span class="rem"># 2. a ledger and two accounts</span>
+curl -s -X POST https://PLUTUS_HOST/v1/ledgers -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"name":"shop"}'
+curl -s -X POST https://PLUTUS_HOST/v1/ledgers/$LEDGER/accounts -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"asset":"GHS","name":"till"}'
+<span class="rem"># 3. money in from the world, then between accounts</span>
+curl -s -X POST https://PLUTUS_HOST/v1/ledgers/$LEDGER/transfers -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -H "Idempotency-Key: fund-1" -d '{"legs":[{"from":"world:GHS","to":"'$TILL'","asset":"GHS","amount":"125000"}]}'
+<span class="rem"># 4. prove the books</span>
+curl -s https://PLUTUS_HOST/v1/ledgers/$LEDGER/verify -H "Authorization: Bearer $KEY"</code></pre></div>
+    <nav class="links">
+      <a href="/docs">Docs</a>
+      <a href="/openapi.json">OpenAPI</a>
+      <a href="/health">Health</a>
+      <a href="https://github.com/atilladev-owner/Plutus">Source on GitHub</a>
+    </nav>
+    <p class="licence">Source available under the <a href="https://github.com/atilladev-owner/Plutus/blob/main/LICENSE.md">PolyForm Noncommercial License 1.0.0</a>. Read it, run it, learn from it. Commercial use needs the author's written permission.</p>
+  </div>
+</body>
+</html>
