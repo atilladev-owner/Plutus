@@ -1,11 +1,23 @@
 import { describe, it, expect } from "vitest";
 import { createServer, type Server } from "node:http";
+import type dns from "node:dns";
 import request from "supertest";
 import { makeTestApp } from "../helpers/app.js";
 import { mintKey, bearer } from "../helpers/keys.js";
 import { verifySignature } from "../../src/platform/webhook-sign.js";
 import { deliverOnce } from "../../src/platform/deliver.js";
 import { MemoryScheduler } from "../../src/platform/scheduler.js";
+
+/** A fake dns.promises.lookup that never settles: only its call shape (hostname,
+ * options) matters here, so the assignment goes through an unknown cast rather than
+ * shaping this to satisfy every real overload. */
+function neverSettlingLookup(): typeof dns.promises.lookup {
+  return (() => new Promise<never>(() => { /* never settles */ })) as unknown as typeof dns.promises.lookup;
+}
+
+function fixedLookup(addresses: Array<{ address: string; family: number }>): typeof dns.promises.lookup {
+  return (async () => addresses) as unknown as typeof dns.promises.lookup;
+}
 
 interface Received { body: string; headers: Record<string, string | string[] | undefined> }
 
@@ -180,6 +192,78 @@ describe("webhooks", () => {
       expect(hits).toBe(1);
       const dl = (await request(app).get(`/v1/webhooks/${ep.id}/deliveries`).set(h)).body.data[0];
       expect(dl).toMatchObject({ status: "succeeded", attempt: 1 });
+    } finally { rx.close(); }
+  });
+
+  it("bounds a hanging resolver instead of holding the delivery's connection open", async () => {
+    const { app, deps } = await makeTestApp();
+    const scheduler = new MemoryScheduler();
+    deps.scheduler = scheduler;
+    const rx = await receiver(() => 200);
+    try {
+      const k = await mintKey(app);
+      const h = bearer(k.secret);
+      const ep = (await request(app).post("/v1/webhooks").set(h).send({ url: "https://example.com/x", events: ["*"] })).body;
+      await deps.pool.query("update webhook_endpoints set url = $2 where id = $1", [ep.id, rx.url]);
+      const l = (await request(app).post("/v1/ledgers").set(h).send({ name: "w" })).body;
+      const a = (await request(app).post(`/v1/ledgers/${l.id}/accounts`).set(h).send({ asset: "GHS", name: "a" })).body;
+      await request(app).post(`/v1/ledgers/${l.id}/transfers`).set(h).send({ legs: [{ from: "world:GHS", to: a.id, asset: "GHS", amount: "100" }] });
+      const id = scheduler.scheduled[0]!.deliveryId;
+      const started = Date.now();
+      await deliverOnce(deps, id, { lookup: neverSettlingLookup() });
+      expect(Date.now() - started).toBeLessThan(5000);
+      expect(rx.got).toHaveLength(0);
+      const dl = (await request(app).get(`/v1/webhooks/${ep.id}/deliveries`).set(h)).body.data[0];
+      expect(["failed", "pending"]).toContain(dl.status);
+      expect(dl.response_status).toBeNull();
+      expect(dl.response_excerpt).toBe("destination lookup failed");
+    } finally { rx.close(); }
+  });
+
+  it("refuses an attempt whose resolved address is private, even though the url passed registration", async () => {
+    const { app, deps } = await makeTestApp();
+    const scheduler = new MemoryScheduler();
+    deps.scheduler = scheduler;
+    const rx = await receiver(() => 200);
+    try {
+      const k = await mintKey(app);
+      const h = bearer(k.secret);
+      const ep = (await request(app).post("/v1/webhooks").set(h).send({ url: "https://example.com/x", events: ["*"] })).body;
+      await deps.pool.query("update webhook_endpoints set url = $2 where id = $1", [ep.id, rx.url]);
+      const l = (await request(app).post("/v1/ledgers").set(h).send({ name: "w" })).body;
+      const a = (await request(app).post(`/v1/ledgers/${l.id}/accounts`).set(h).send({ asset: "GHS", name: "a" })).body;
+      await request(app).post(`/v1/ledgers/${l.id}/transfers`).set(h).send({ legs: [{ from: "world:GHS", to: a.id, asset: "GHS", amount: "100" }] });
+      const id = scheduler.scheduled[0]!.deliveryId;
+      await deliverOnce(deps, id, { lookup: fixedLookup([{ address: "10.0.0.1", family: 4 }]) });
+      expect(rx.got).toHaveLength(0);
+      const dl = (await request(app).get(`/v1/webhooks/${ep.id}/deliveries`).set(h)).body.data[0];
+      expect(["failed", "pending"]).toContain(dl.status);
+      expect(dl.response_status).toBeNull();
+      expect(dl.response_excerpt).toBe("destination resolves to a private address");
+    } finally { rx.close(); }
+  });
+
+  it("judges the resolved address, not the url: a public answer is let through to the real receiver", async () => {
+    const { app, deps } = await makeTestApp();
+    const scheduler = new MemoryScheduler();
+    deps.scheduler = scheduler;
+    const rx = await receiver(() => 200);
+    try {
+      const k = await mintKey(app);
+      const h = bearer(k.secret);
+      const ep = (await request(app).post("/v1/webhooks").set(h).send({ url: "https://example.com/x", events: ["*"] })).body;
+      // The url still points at the local receiver (127.0.0.1, which isPublicAddress
+      // would refuse); the injected resolver answers with a public address instead, and
+      // that answer, not the url's own host, is what the check judges.
+      await deps.pool.query("update webhook_endpoints set url = $2 where id = $1", [ep.id, rx.url]);
+      const l = (await request(app).post("/v1/ledgers").set(h).send({ name: "w" })).body;
+      const a = (await request(app).post(`/v1/ledgers/${l.id}/accounts`).set(h).send({ asset: "GHS", name: "a" })).body;
+      await request(app).post(`/v1/ledgers/${l.id}/transfers`).set(h).send({ legs: [{ from: "world:GHS", to: a.id, asset: "GHS", amount: "100" }] });
+      const id = scheduler.scheduled[0]!.deliveryId;
+      await deliverOnce(deps, id, { lookup: fixedLookup([{ address: "93.184.216.34", family: 4 }]) });
+      expect(rx.got).toHaveLength(1);
+      const dl = (await request(app).get(`/v1/webhooks/${ep.id}/deliveries`).set(h)).body.data[0];
+      expect(dl).toMatchObject({ status: "succeeded", attempt: 1, response_status: 200 });
     } finally { rx.close(); }
   });
 });
