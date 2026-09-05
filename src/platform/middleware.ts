@@ -1,11 +1,15 @@
+import type { Request, Response, NextFunction } from "express";
 import type { AppDeps } from "../deps.js";
 import type { RouteMiddleware } from "./route.js";
+import { bearerAuth } from "./auth.js";
 
-/** Pass through factories. Tasks 6 to 8 replace these with real auth, rate limiting and idempotency. */
-export function productionMiddleware(_deps: AppDeps): RouteMiddleware {
+const passThrough = (_req: Request, _res: Response, next: NextFunction) => next();
+
+/** Rate limiting and idempotency stay pass through until tasks 7 and 8 replace them. */
+export function productionMiddleware(deps: AppDeps): RouteMiddleware {
   return {
-    auth: () => (_req, _res, next) => next(),
-    rateLimit: () => (_req, _res, next) => next(),
-    idempotency: () => (_req, _res, next) => next(),
+    auth: bearerAuth(deps),
+    rateLimit: () => passThrough,
+    idempotency: () => passThrough,
   };
 }
