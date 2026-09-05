@@ -6,6 +6,7 @@ import { requestLog } from "./platform/logger.js";
 import { errorHandler, notFoundHandler } from "./platform/error-handler.js";
 import { mountRoutes, type RouteDef, type RouteMiddleware } from "./platform/route.js";
 import { healthRoutes } from "./routes/health.js";
+import { mountDocs } from "./routes/docs.js";
 
 const passThrough: RouteMiddleware = {
   auth: () => (_req, _res, next) => next(),
@@ -44,6 +45,7 @@ export function createApp(deps: AppDeps, routes: RouteDef[] = [...healthRoutes],
   });
   app.use(express.static("public"));
   mountRoutes(app, deps, routes, mw);
+  mountDocs(app, deps);
   app.use(notFoundHandler);
   app.use(errorHandler(deps.logger));
   return app;
