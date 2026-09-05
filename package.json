@@ -15,6 +15,7 @@
     "test:integration": "vitest run tests/integration",
     "test:property": "vitest run tests/property",
     "test:contract": "vitest run tests/contract",
+    "test:mutation": "node scripts/mutate.mjs",
     "migrate": "tsx scripts/migrate.ts",
     "key:live": "tsx scripts/key-live.ts"
   },

@@ -36,6 +36,7 @@ jobs:
       - run: npm run test:integration
       - run: npm run test:property
       - run: npm run test:contract
+      - run: npm run test:mutation
   deploy:
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
