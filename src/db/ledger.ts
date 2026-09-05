@@ -24,7 +24,7 @@ export type Cursored<T> = T & { cursor_t: string };
  * that share a microsecond with the cursor row. cursor_t round trips through $2::timestamptz
  * exactly, so no row sharing a timestamp with the cursor row is ever skipped.
  */
-function pageOf<T extends { id: string }>(rows: Cursored<T>[], limit: number): Paged<T> {
+export function pageOf<T extends { id: string }>(rows: Cursored<T>[], limit: number): Paged<T> {
   const n = limit > 0 ? limit : 1;
   const data = rows.slice(0, n);
   const last = rows.length > n ? data[data.length - 1] : undefined;
@@ -126,6 +126,17 @@ export async function createHold(c: PoolClient, input: { ledgerId: string; holdI
 export async function releaseHold(c: PoolClient, ledgerId: string, holdId: string, kind: "hold.released" | "hold.expired"): Promise<WriteResult & { released: string }> {
   const { rows } = await c.query<{ r: { id: string; released: string; seq: number; event_ids: string[] } }>(
     "select release_hold($1, $2, $3, now()) as r", [ledgerId, holdId, kind]);
+  const r = (rows[0] as { r: { id: string; released: string; seq: number; event_ids: string[] } }).r;
+  return { id: r.id, seq: String(r.seq), event_ids: r.event_ids, released: r.released };
+}
+
+/** Closes a hold as captured, freeing whatever remains held. Unlike releaseHold, the
+ * terminal status is "captured", not "released": for a hold a capture already drew
+ * money against, that is the honest label, and the journal records both the remainder
+ * release and the capture close, in that order. */
+export async function captureCloseHold(c: PoolClient, ledgerId: string, holdId: string): Promise<WriteResult & { released: string }> {
+  const { rows } = await c.query<{ r: { id: string; released: string; seq: number; event_ids: string[] } }>(
+    "select capture_close_hold($1, $2, now()) as r", [ledgerId, holdId]);
   const r = (rows[0] as { r: { id: string; released: string; seq: number; event_ids: string[] } }).r;
   return { id: r.id, seq: String(r.seq), event_ids: r.event_ids, released: r.released };
 }

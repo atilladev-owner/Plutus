@@ -24,6 +24,7 @@ export const ledgerRoutes = [
   defineRoute({
     method: "post", path: "/v1/ledgers", summary: "Create a ledger", tag: "Ledgers", auth: "bearer", scope: "ledger:write", idempotent: true, status: 201,
     body: LedgerCreate, response: LedgerOut,
+    // No afterCommit: creating a ledger writes no journal entry and emits no events.
     handler: async ({ key, body, tx }) => tx(async (c) => {
       if (key!.mode === "test" && (await L.countLedgers(c, key!.id)) >= 10) throw new ApiError(409, "sandbox_limit_reached", "ledgers per key: 10");
       return ledgerOut(await L.createLedger(c, { id: newId("ldg"), keyId: key!.id, name: body.name }));

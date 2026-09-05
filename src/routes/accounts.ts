@@ -21,6 +21,7 @@ export const accountRoutes = [
   defineRoute({
     method: "post", path: "/v1/ledgers/{id}/accounts", summary: "Create an account", tag: "Accounts", auth: "bearer", scope: "ledger:write", idempotent: true, status: 201,
     params: Params, body: AccountCreate, response: AccountOut,
+    // No afterCommit: creating an account writes no journal entry and emits no events.
     handler: async ({ key, params, body, tx }) => tx(async (c) => {
       const ledger = await ownLedger(c, key!.id, params.id);
       const asset = await c.query("select 1 from assets where code = $1", [body.asset]);

@@ -19,8 +19,15 @@ describe("holds over HTTP", () => {
     const cap = await request(app).post(`/v1/ledgers/${l.id}/holds/${hold.body.id}/capture`).set(h).send({ to: b.id, amount: "1500", release_remainder: true });
     expect(cap.status).toBe(200);
     expect(cap.body.hold.status).toBe("captured");
+    expect(cap.body.hold.remaining).toBe("0");
     expect(cap.body.transfer.legs[0].from_hold).toBe(hold.body.id);
     expect((await request(app).get(`/v1/ledgers/${l.id}/accounts/${a.id}`).set(h)).body).toMatchObject({ balance: "8500", held: "0", available: "8500" });
+    const journal = await request(app).get(`/v1/ledgers/${l.id}/journal`).set(h);
+    const lastTwo = journal.body.data.slice(-2);
+    expect(lastTwo[0]).toMatchObject({ kind: "hold.released", payload: { hold: { id: hold.body.id, amount: "2500", reason: "capture_remainder" } } });
+    expect(lastTwo[1]).toMatchObject({ kind: "hold.captured", payload: { hold: { id: hold.body.id, amount: "4000", captured: "1500" } } });
+    const capturedEvents = await request(app).get("/v1/events?type=hold.captured").set(h);
+    expect(capturedEvents.body.data.map((e: { entity_id: string }) => e.entity_id)).toContain(hold.body.id);
     const again = await request(app).post(`/v1/ledgers/${l.id}/holds/${hold.body.id}/release`).set(h).send({});
     expect(again.status).toBe(409);
     expect(again.body.code).toBe("hold_not_open");

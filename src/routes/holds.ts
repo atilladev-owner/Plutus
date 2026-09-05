@@ -49,15 +49,11 @@ export const holdRoutes = [
         const r = await L.postTransfer(c, { ledgerId: ledger.id, transferId: newId("tr"), legs: [{ from_hold: hold.id, to: body.to, asset: hold.asset, amount }], memo: `capture ${hold.id}`, metadata: {} });
         eventIds = [...r.event_ids];
         const after = (await L.getHold(c, ledger.id, hold.id))!;
-        if (body.release_remainder && after.status === "open") {
-          eventIds.push(...(await L.releaseHold(c, ledger.id, hold.id, "hold.released")).event_ids);
-          // release_hold is the shared primitive for freeing held funds; it always leaves the
-          // hold "released". A capture that also released its remainder already moved money
-          // out through this same request, so it reads as captured, never as released, which
-          // would wrongly imply nothing was captured. The journal keeps its accurate
-          // "hold.released" entry for the remainder; only the terminal label is corrected here.
-          await c.query("update holds set status = 'captured' where id = $1", [hold.id]);
-        }
+        // A capture that leaves money still held and is asked to release it closes the hold
+        // as captured, not released: captureCloseHold frees the remainder and records both
+        // journal entries (hold.released for the remainder, then hold.captured) atomically,
+        // so the resource, the journal and the event feed always agree.
+        if (body.release_remainder && after.status === "open") eventIds.push(...(await L.captureCloseHold(c, ledger.id, hold.id)).event_ids);
         return { hold: holdOut((await L.getHold(c, ledger.id, hold.id))!), transfer: transferOut((await L.getTransfer(c, ledger.id, r.id))!) };
       });
       await afterCommit(deps, eventIds);
