@@ -1,0 +1,7 @@
+.superpowers/
+.impeccable/
+.claude/
+.agents/
+skills-lock.json
+coverage/
+test-results/

@@ -1,5 +1,6 @@
 import express, { type Express, type Request } from "express";
-import helmet from "helmet";
+// Namespace form on purpose: helmet ships ESM and CommonJS typings and the default import resolved to the CommonJS pair on the deploy host.
+import * as helmetModule from "helmet";
 import type { AppDeps } from "./deps.js";
 import { requestId } from "./platform/request-id.js";
 import { requestLog } from "./platform/logger.js";
@@ -23,7 +24,7 @@ export function createApp(deps: AppDeps, routes: RouteDef[] = [...healthRoutes],
   // trust every hop a client cares to prepend, which defeats per-IP rate limiting.
   app.set("trust proxy", 1);
   app.locals.deps = deps;
-  app.use(helmet({ contentSecurityPolicy: false }));
+  app.use(helmetModule.default({ contentSecurityPolicy: false }));
   app.use(requestId);
   app.use(requestLog(deps.logger));
   app.use(express.json({
