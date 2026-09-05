@@ -1,9 +1,11 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { z, type ZodType } from "zod";
+import type { PoolClient } from "pg";
 import type { AppDeps } from "../deps.js";
 import { ApiError, validation } from "../domain/errors.js";
 import { decodeCursor, type Cursor } from "../domain/cursor.js";
 import { complete } from "../db/idempotency.js";
+import { withTx } from "../db/pool.js";
 import type { RateBucket } from "./ratelimit.js";
 
 export interface AuthedKey { id: string; mode: "test" | "live"; scopes: string[]; prefix: string; last4: string }
@@ -13,6 +15,13 @@ export interface RouteContext<P, Q, B> {
   params: P; query: Q; body: B;
   key: AuthedKey | null; requestId: string; ip: string;
   deps: AppDeps; req: Request; res: Response;
+  /**
+   * Runs fn in a transaction, and, if the request carries an unstored idempotency claim,
+   * writes the reply inside that same transaction before it commits. So a write and its
+   * replay record land together: either both commit or neither does, and a store failure
+   * can never leave the claim released while the money move already happened.
+   */
+  tx<T>(fn: (c: PoolClient) => Promise<T>): Promise<T>;
 }
 
 export interface RouteDef<P = unknown, Q = unknown, B = unknown, R = unknown> {
@@ -87,17 +96,27 @@ export function mountRoutes(app: Express, deps: AppDeps, routes: RouteDef[], mw:
           if (!parsed.success) throw validation("the request body is invalid", issuesOf(parsed.error));
           body = parsed.data;
         }
+        function tx<T>(fn: (c: PoolClient) => Promise<T>): Promise<T> {
+          return withTx(deps.pool, async (c) => {
+            const out = await fn(c);
+            if (res.locals.idem && !res.locals.idem.stored) {
+              await complete(c, res.locals.idem.keyId, res.locals.idem.idemKey, res.statusCode !== 200 ? res.statusCode : (def.status ?? 200), out);
+              res.locals.idem.stored = true;
+            }
+            return out;
+          });
+        }
         const out = await def.handler({
           params: params.data as never, query: query.data as never, body: body as never,
           key: (res.locals.key as AuthedKey | undefined) ?? null,
           requestId: res.locals.requestId as string,
           ip: req.ip ?? "0.0.0.0",
-          deps, req, res,
+          deps, req, res, tx,
         });
         if (res.headersSent) return;
         const status = res.statusCode !== 200 ? res.statusCode : (def.status ?? 200);
         const idem = res.locals.idem;
-        if (idem) {
+        if (idem && !idem.stored) {
           const client = await deps.pool.connect();
           try {
             await complete(client, idem.keyId, idem.idemKey, status, out);

@@ -1,0 +1,46 @@
+import { describe, it, expect } from "vitest";
+import request from "supertest";
+import { makeTestApp } from "../helpers/app.js";
+import { mintKey, bearer } from "../helpers/keys.js";
+
+describe("holds over HTTP", () => {
+  it("creates, captures with a remainder released, and expires lazily on read", async () => {
+    const { app, deps } = await makeTestApp();
+    const k = await mintKey(app);
+    const h = bearer(k.secret);
+    const l = (await request(app).post("/v1/ledgers").set(h).send({ name: "x" })).body;
+    const a = (await request(app).post(`/v1/ledgers/${l.id}/accounts`).set(h).send({ asset: "HKD", name: "a" })).body;
+    const b = (await request(app).post(`/v1/ledgers/${l.id}/accounts`).set(h).send({ asset: "HKD", name: "b" })).body;
+    await request(app).post(`/v1/ledgers/${l.id}/transfers`).set(h).send({ legs: [{ from: "world:HKD", to: a.id, asset: "HKD", amount: "10000" }] });
+    const hold = await request(app).post(`/v1/ledgers/${l.id}/holds`).set(h).send({ account: a.id, amount: "4000", expires_in_seconds: 60 });
+    expect(hold.status).toBe(201);
+    expect(hold.body).toMatchObject({ status: "open", amount: "4000", remaining: "4000" });
+    expect((await request(app).get(`/v1/ledgers/${l.id}/accounts/${a.id}`).set(h)).body).toMatchObject({ held: "4000", available: "6000" });
+    const cap = await request(app).post(`/v1/ledgers/${l.id}/holds/${hold.body.id}/capture`).set(h).send({ to: b.id, amount: "1500", release_remainder: true });
+    expect(cap.status).toBe(200);
+    expect(cap.body.hold.status).toBe("captured");
+    expect(cap.body.transfer.legs[0].from_hold).toBe(hold.body.id);
+    expect((await request(app).get(`/v1/ledgers/${l.id}/accounts/${a.id}`).set(h)).body).toMatchObject({ balance: "8500", held: "0", available: "8500" });
+    const again = await request(app).post(`/v1/ledgers/${l.id}/holds/${hold.body.id}/release`).set(h).send({});
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe("hold_not_open");
+    const h2 = (await request(app).post(`/v1/ledgers/${l.id}/holds`).set(h).send({ account: a.id, amount: "100", expires_in_seconds: 60 })).body;
+    await deps.pool.query("update holds set expires_at = now() - interval '1 second' where id = $1", [h2.id]);
+    expect((await request(app).get(`/v1/ledgers/${l.id}/holds/${h2.id}`).set(h)).body.status).toBe("expired");
+    expect((await request(app).get(`/v1/ledgers/${l.id}/accounts/${a.id}`).set(h)).body.held).toBe("0");
+  });
+  it("validates expiry bounds and refuses a capture beyond remaining", async () => {
+    const { app } = await makeTestApp();
+    const k = await mintKey(app);
+    const h = bearer(k.secret);
+    const l = (await request(app).post("/v1/ledgers").set(h).send({ name: "x" })).body;
+    const a = (await request(app).post(`/v1/ledgers/${l.id}/accounts`).set(h).send({ asset: "HKD", name: "a" })).body;
+    const b = (await request(app).post(`/v1/ledgers/${l.id}/accounts`).set(h).send({ asset: "HKD", name: "b" })).body;
+    await request(app).post(`/v1/ledgers/${l.id}/transfers`).set(h).send({ legs: [{ from: "world:HKD", to: a.id, asset: "HKD", amount: "100" }] });
+    expect((await request(app).post(`/v1/ledgers/${l.id}/holds`).set(h).send({ account: a.id, amount: "1", expires_in_seconds: 8 * 24 * 3600 })).status).toBe(422);
+    const hold = (await request(app).post(`/v1/ledgers/${l.id}/holds`).set(h).send({ account: a.id, amount: "50" })).body;
+    const over = await request(app).post(`/v1/ledgers/${l.id}/holds/${hold.id}/capture`).set(h).send({ to: b.id, amount: "51" });
+    expect(over.status).toBe(409);
+    expect(over.body.code).toBe("insufficient_funds");
+  });
+});
