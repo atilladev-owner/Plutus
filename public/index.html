@@ -122,14 +122,14 @@
     </div>
     <p class="label">Thirty seconds</p>
     <div class="quickstart"><pre><code><span class="rem"># 1. a key, no signup</span>
-curl -s -X POST https://PLUTUS_HOST/v1/keys
+curl -s -X POST https://plutus-ten-eta.vercel.app/v1/keys
 <span class="rem"># 2. a ledger and two accounts</span>
-curl -s -X POST https://PLUTUS_HOST/v1/ledgers -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"name":"shop"}'
-curl -s -X POST https://PLUTUS_HOST/v1/ledgers/$LEDGER/accounts -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"asset":"GHS","name":"till"}'
+curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"name":"shop"}'
+curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/accounts -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"asset":"GHS","name":"till"}'
 <span class="rem"># 3. money in from the world, then between accounts</span>
-curl -s -X POST https://PLUTUS_HOST/v1/ledgers/$LEDGER/transfers -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -H "Idempotency-Key: fund-1" -d '{"legs":[{"from":"world:GHS","to":"'$TILL'","asset":"GHS","amount":"125000"}]}'
+curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -H "Idempotency-Key: fund-1" -d '{"legs":[{"from":"world:GHS","to":"'$TILL'","asset":"GHS","amount":"125000"}]}'
 <span class="rem"># 4. prove the books</span>
-curl -s https://PLUTUS_HOST/v1/ledgers/$LEDGER/verify -H "Authorization: Bearer $KEY"</code></pre></div>
+curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/verify -H "Authorization: Bearer $KEY"</code></pre></div>
     <nav class="links">
       <a href="/docs">Docs</a>
       <a href="/openapi.json">OpenAPI</a>

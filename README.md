@@ -12,14 +12,14 @@ Plutus is a multi asset ledger, and from milestone two a paper trading exchange,
 
 ```bash
 # 1. a key, no signup
-curl -s -X POST https://PLUTUS_HOST/v1/keys
+curl -s -X POST https://plutus-ten-eta.vercel.app/v1/keys
 # 2. a ledger and two accounts
-curl -s -X POST https://PLUTUS_HOST/v1/ledgers -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"name":"shop"}'
-curl -s -X POST https://PLUTUS_HOST/v1/ledgers/$LEDGER/accounts -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"asset":"GHS","name":"till"}'
+curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"name":"shop"}'
+curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/accounts -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"asset":"GHS","name":"till"}'
 # 3. money in from the world, then between accounts
-curl -s -X POST https://PLUTUS_HOST/v1/ledgers/$LEDGER/transfers -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -H "Idempotency-Key: fund-1" -d '{"legs":[{"from":"world:GHS","to":"'$TILL'","asset":"GHS","amount":"125000"}]}'
+curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -H "Idempotency-Key: fund-1" -d '{"legs":[{"from":"world:GHS","to":"'$TILL'","asset":"GHS","amount":"125000"}]}'
 # 4. prove the books
-curl -s https://PLUTUS_HOST/v1/ledgers/$LEDGER/verify -H "Authorization: Bearer $KEY"
+curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/verify -H "Authorization: Bearer $KEY"
 ```
 
 ## What a stranger can verify
