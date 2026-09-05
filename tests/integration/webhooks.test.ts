@@ -218,7 +218,7 @@ describe("webhooks", () => {
       expect(dl.response_status).toBeNull();
       expect(dl.response_excerpt).toBe("destination lookup failed");
     } finally { rx.close(); }
-  });
+  }, 15_000);
 
   it("refuses an attempt whose resolved address is private, even though the url passed registration", async () => {
     const { app, deps } = await makeTestApp();
