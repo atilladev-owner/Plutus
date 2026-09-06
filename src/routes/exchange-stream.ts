@@ -22,11 +22,14 @@ import type { AppDeps } from "../deps.js";
  * source is ever queried, only the three payload shapes those migrations actually write.
  *
  * book:SYMBOL carries order.accepted, order.cancelled and order.filled, reshaped as:
- *   order.accepted:  { type: "order.accepted", order_id, side, order_type }
- *   order.cancelled: { type: "order.cancelled", order_id, reason }
- *   order.filled:    { type: "order.filled", price, quantity, notional }
+ *   order.accepted:  { type: "order.accepted", order_id, side, order_type, at }
+ *   order.cancelled: { type: "order.cancelled", order_id, reason, at }
+ *   order.filled:    { type: "order.filled", price, quantity, notional, at }
  * order.rejected is written to market_events too, but it is not a book change (nothing was
- * ever accepted onto the book to begin with), so it never reaches either channel.
+ * ever accepted onto the book to begin with), so it never reaches either channel. at is the
+ * row's own created_at, as an ISO string: the one field every shape carries that market_events
+ * itself stamps rather than the caller, so it is added here rather than folded into any one
+ * payload's own fields.
  *
  * key_id is withheld from order.accepted's own reshaping even though the stored payload
  * carries it: every other public market data read this codebase already ships (getBookLevels
@@ -36,9 +39,9 @@ import type { AppDeps } from "../deps.js";
  * sell_order_id are withheld from a fill the same way listPublicTrades already withholds
  * them: "a public tape shows the fill itself, not who was on either side of it."
  *
- * trades:SYMBOL carries only order.filled, reshaped as { price, quantity, notional }, the
+ * trades:SYMBOL carries only order.filled, reshaped as { price, quantity, notional, at }, the
  * same three fields the public trade tape (GET /v1/exchange/markets/{symbol}/trades) already
- * shows for a fill, with neither order's identity either.
+ * shows for a fill, with neither order's identity either, plus the row's own created_at.
  */
 
 type ChannelKind = "book" | "trades";
@@ -114,35 +117,49 @@ function parseSince(raw: unknown): bigint {
   return BigInt(raw);
 }
 
-interface RawMarketEvent { market: string; seq: string; type: string; payload: Record<string, unknown> }
+interface RawMarketEvent { market: string; seq: string; type: string; payload: Record<string, unknown>; created_at: Date }
+
+/**
+ * The most rows one fetchEvents page ever returns. Bounds a replay from since=0 on a long
+ * history, and a burst caught in one tail tick, to one page in memory and one page written
+ * at a time rather than the whole backlog at once: pump() below loops, re-querying with each
+ * market's bound advanced to the last row it actually sent, for as long as a page comes back
+ * full (a page shorter than the limit is proof nothing subscribed is left to send).
+ */
+const EVENTS_PAGE_LIMIT = 500;
 
 /**
  * One query for every subscribed market, spec's own wording for the tail: bounds pairs each
  * market with the seq already sent for it, joined against market_events through unnest's
  * parallel array form rather than issued as one query per market. Used identically for the
  * initial replay (every bound is the request's own since) and every later tail tick (every
- * bound is that market's own last sent seq).
+ * bound is that market's own last sent seq). Capped at EVENTS_PAGE_LIMIT rows, ordered by
+ * market then seq, so a caller that keeps re-querying with each market's bound advanced to
+ * what it actually sent drains an arbitrarily long backlog a page at a time, skipping nothing
+ * and repeating nothing.
  */
 async function fetchEvents(pool: Pool, bounds: Map<string, bigint>): Promise<RawMarketEvent[]> {
   const markets = [...bounds.keys()];
   if (markets.length === 0) return [];
   const sinceValues = markets.map((m) => (bounds.get(m) as bigint).toString());
   const { rows } = await pool.query<RawMarketEvent>(
-    `select me.market, me.seq::text as seq, me.type, me.payload
+    `select me.market, me.seq::text as seq, me.type, me.payload, me.created_at
      from market_events me
      join unnest($1::text[], $2::bigint[]) as bounds(market, since) on me.market = bounds.market
      where me.seq > bounds.since
-     order by me.market, me.seq`,
-    [markets, sinceValues]);
+     order by me.market, me.seq
+     limit $3`,
+    [markets, sinceValues, EVENTS_PAGE_LIMIT]);
   return rows;
 }
 
 function bookDelta(row: RawMarketEvent): Record<string, unknown> | null {
   const p = row.payload;
+  const at = row.created_at.toISOString();
   switch (row.type) {
-    case "order.accepted": return { type: "order.accepted", order_id: p.order_id, side: p.side, order_type: p.type };
-    case "order.cancelled": return { type: "order.cancelled", order_id: p.order_id, reason: p.reason };
-    case "order.filled": return { type: "order.filled", price: p.price, quantity: p.quantity, notional: p.notional };
+    case "order.accepted": return { type: "order.accepted", order_id: p.order_id, side: p.side, order_type: p.type, at };
+    case "order.cancelled": return { type: "order.cancelled", order_id: p.order_id, reason: p.reason, at };
+    case "order.filled": return { type: "order.filled", price: p.price, quantity: p.quantity, notional: p.notional, at };
     default: return null;
   }
 }
@@ -150,18 +167,21 @@ function bookDelta(row: RawMarketEvent): Record<string, unknown> | null {
 function tradeDelta(row: RawMarketEvent): Record<string, unknown> | null {
   if (row.type !== "order.filled") return null;
   const p = row.payload;
-  return { price: p.price, quantity: p.quantity, notional: p.notional };
+  return { price: p.price, quantity: p.quantity, notional: p.notional, at: row.created_at.toISOString() };
 }
 
-function writeFrame(res: Response, name: string, data: unknown, id?: string): void {
+function frameText(name: string, data: unknown, id?: string): string {
   const lines: string[] = [];
   if (id !== undefined) lines.push(`id: ${id}`);
   lines.push(`event: ${name}`);
   lines.push(`data: ${JSON.stringify(data)}`);
-  res.write(lines.join("\n") + "\n\n");
+  return lines.join("\n") + "\n\n";
 }
 
-async function streamHandler(req: Request, res: Response, deps: AppDeps): Promise<void> {
+/** Exported only so tests/unit/exchange-stream.test.ts can drive it directly against a fake
+ * request and response, to prove the backpressure pause and resume deterministically without
+ * a real socket. mountStream below is still the one real caller in production. */
+export async function streamHandler(req: Request, res: Response, deps: AppDeps): Promise<void> {
   const subscriptions = parseSubscriptions(req.query.channels);
   const since = parseSince(req.query.since);
 
@@ -208,29 +228,88 @@ async function streamHandler(req: Request, res: Response, deps: AppDeps): Promis
   res.status(200);
   res.flushHeaders();
 
-  function publish(rows: RawMarketEvent[]): void {
-    for (const row of rows) {
-      const want = wants.get(row.market);
-      if (want) {
-        if (want.book) {
-          const delta = bookDelta(row);
-          if (delta) writeFrame(res, "message", { channel: `book:${row.market}`, seq: row.seq, data: delta }, row.seq);
-        }
-        if (want.trades) {
-          const delta = tradeDelta(row);
-          if (delta) writeFrame(res, "message", { channel: `trades:${row.market}`, seq: row.seq, data: delta }, row.seq);
+  // A slow reader must never make this route buffer an unbounded amount of unsent data
+  // over a connection that can live four minutes fifty seconds: paused tracks whatever
+  // res.write's own return value last said, and every writer (the replay, the tail, the
+  // heartbeat) checks it before adding more rather than only the one call site that first
+  // saw it go false. waitForDrain resolves on the socket's own drain event, or immediately
+  // on the request closing while paused, so a reader that vanishes mid backlog never leaves
+  // pump() awaiting a drain that will now never come.
+  let paused = false;
+
+  function send(chunk: string): void {
+    if (!res.write(chunk)) paused = true;
+  }
+
+  function waitForDrain(): Promise<void> {
+    return new Promise((resolve) => {
+      function onDrain(): void { req.off("close", onClose); paused = false; resolve(); }
+      function onClose(): void { res.off("drain", onDrain); resolve(); }
+      res.once("drain", onDrain);
+      req.once("close", onClose);
+    });
+  }
+
+  async function backpressure(): Promise<void> {
+    if (paused) await waitForDrain();
+  }
+
+  function yieldToEventLoop(): Promise<void> {
+    return new Promise((resolve) => { setImmediate(resolve); });
+  }
+
+  // Publishes one row, waiting out any backpressure between each frame it writes, then
+  // advances that market's own last sent seq only once every frame for the row is safely
+  // written: a resumed pump never re-sends a half written row, and never skips one either.
+  async function publishRow(row: RawMarketEvent): Promise<void> {
+    const want = wants.get(row.market);
+    if (want) {
+      if (want.book) {
+        const delta = bookDelta(row);
+        if (delta) {
+          send(frameText("message", { channel: `book:${row.market}`, seq: row.seq, data: delta }, row.seq));
+          await backpressure();
         }
       }
-      const seen = lastSeq.get(row.market) ?? since;
-      const seq = BigInt(row.seq);
-      if (seq > seen) lastSeq.set(row.market, seq);
+      if (want.trades) {
+        const delta = tradeDelta(row);
+        if (delta) {
+          send(frameText("message", { channel: `trades:${row.market}`, seq: row.seq, data: delta }, row.seq));
+          await backpressure();
+        }
+      }
+    }
+    const seen = lastSeq.get(row.market) ?? since;
+    const seq = BigInt(row.seq);
+    if (seq > seen) lastSeq.set(row.market, seq);
+  }
+
+  // Drains every row currently owed to this connection, one EVENTS_PAGE_LIMIT page at a
+  // time, re-querying with each market's bound advanced to the last seq it actually sent.
+  // A page shorter than the limit proves nothing subscribed is left to send, so the loop
+  // stops there; a full page means more may still be waiting, so it yields to the event
+  // loop (rather than looping straight back into another query and write burst) before
+  // asking again. Used identically for the initial replay and every later tail tick, so
+  // a huge replay from since=0 and a burst caught in one tail tick are bounded the same way.
+  async function pump(): Promise<void> {
+    for (;;) {
+      if (closed) return;
+      const rows = await fetchEvents(deps.pool, lastSeq);
+      if (closed) return;
+      for (const row of rows) {
+        if (closed) return;
+        await publishRow(row);
+      }
+      if (rows.length < EVENTS_PAGE_LIMIT) return;
+      if (closed) return;
+      await yieldToEventLoop();
     }
   }
 
   // A query failure, replay or tail, never kills the process: it is caught, logged, and ends
   // this one stream, exactly like any other reader losing its connection.
   try {
-    publish(await fetchEvents(deps.pool, lastSeq));
+    await pump();
   } catch (err) {
     deps.logger.error({ err: (err as Error).message }, "exchange stream replay failed");
     cleanup();
@@ -243,8 +322,7 @@ async function streamHandler(req: Request, res: Response, deps: AppDeps): Promis
   timers.tail = setInterval(() => {
     if (closed || tailRunning) return;
     tailRunning = true;
-    fetchEvents(deps.pool, lastSeq)
-      .then((rows) => { if (!closed) publish(rows); })
+    pump()
       .catch((err: unknown) => {
         deps.logger.error({ err: (err as Error).message }, "exchange stream tail failed");
         cleanup();
@@ -254,12 +332,12 @@ async function streamHandler(req: Request, res: Response, deps: AppDeps): Promis
   }, streamOptions.tailIntervalMs);
 
   timers.heartbeat = setInterval(() => {
-    if (!closed) res.write(": heartbeat\n\n");
+    if (!closed && !paused) send(": heartbeat\n\n");
   }, streamOptions.heartbeatIntervalMs);
 
   timers.lifetime = setTimeout(() => {
     if (closed) return;
-    writeFrame(res, "reconnect", { reason: "reconnect" });
+    send(frameText("reconnect", { reason: "reconnect" }));
     cleanup();
     res.end();
   }, streamOptions.lifetimeMs);
@@ -281,7 +359,7 @@ export function mountStream(app: Express, deps: AppDeps): void {
 export const streamOpenApiPath: Record<string, Record<string, unknown>> = {
   get: {
     summary:
-      "The public market event stream over Server-Sent Events (spec 10.7; shipped as SSE, not the WebSocket the spec section is headed with, since no WebSocket upgrade reaches an Express app deployed as a Vercel Function on this account). Replays every market_events row after since for the subscribed channels, in seq order, then tails once a second. book:SYMBOL carries order.accepted as {type,order_id,side,order_type}, order.cancelled as {type,order_id,reason}, and order.filled as {type,price,quantity,notional}. trades:SYMBOL carries only order.filled, as {price,quantity,notional}. A heartbeat comment every 15 seconds; a reconnect event and the end of the response at four minutes fifty seconds. Public, no key, at most 10 concurrent streams per address.",
+      "The public market event stream over Server-Sent Events (spec 10.7; shipped as SSE, not the WebSocket the spec section is headed with, since no WebSocket upgrade reaches an Express app deployed as a Vercel Function on this account). Replays every market_events row after since for the subscribed channels, in seq order, a page at a time, then tails once a second. book:SYMBOL carries order.accepted as {type,order_id,side,order_type,at}, order.cancelled as {type,order_id,reason,at}, and order.filled as {type,price,quantity,notional,at}. trades:SYMBOL carries only order.filled, as {price,quantity,notional,at}. at is the row's own created_at as an ISO string. A slow reader is paused rather than dropped: nothing is skipped and nothing is sent twice once it catches up. A heartbeat comment every 15 seconds; a reconnect event and the end of the response at four minutes fifty seconds. Public, no key, at most 10 concurrent streams per address.",
     tags: ["Exchange"],
     operationId: "get_v1_exchange_stream",
     parameters: [

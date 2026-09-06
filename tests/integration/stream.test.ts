@@ -7,7 +7,7 @@ import { makeTestApp } from "../helpers/app.js";
 import { resetExchangeBooks } from "../helpers/exchange.js";
 import { withTx } from "../../src/db/pool.js";
 import { newId } from "../../src/domain/ids.js";
-import { placeOrder, cancelOrder, exchangeFaucet, type PlaceOrderInput } from "../../src/db/exchange.js";
+import { placeOrder, cancelOrder, exchangeFaucet, MARKETS, type PlaceOrderInput } from "../../src/db/exchange.js";
 import { streamOptions, STREAM_DEFAULTS } from "../../src/routes/exchange-stream.js";
 
 // The public market event stream, task 8, spec 10.7 shipped as SSE rather than a WebSocket
@@ -73,6 +73,35 @@ async function cancelResting(keyId: string, orderId: string): Promise<void> {
  */
 async function appendFillEvent(market: string, payload: Record<string, string>): Promise<void> {
   await testPool().query("select append_market_event($1, 'order.filled', $2::jsonb, now())", [market, JSON.stringify(payload)]);
+}
+
+/**
+ * A market this exchange's own MARKETS list does not know about until this call, for the
+ * one scenario below that needs a long backlog with no risk of another test file's own
+ * orders landing in the middle of it (every other scenario in this file shares BTC-USDT
+ * with the rest of the exchange test suite). market_events.market references
+ * markets(symbol) (db/migrations/0011_exchange.sql), so a row has to exist in markets
+ * first; it copies BTC-USDT's own tick_size and lot_size, already valid against
+ * enforce_market_tick_lot since that trigger accepted the very same pair for the real
+ * BTC-USDT row. MARKETS itself (src/db/exchange.ts) is a plain array, not frozen the way
+ * STREAM_DEFAULTS is, so pushing this symbol onto it is what lets the stream route's own
+ * isMarketSymbol check accept it for the lifetime of this one test file's process;
+ * releasePrivateMarket below takes it back off and removes the row, so no later test or
+ * file ever sees it.
+ */
+async function registerPrivateMarket(symbol: string): Promise<void> {
+  await testPool().query(
+    `insert into markets (symbol, base, quote, tick_size, lot_size, min_notional, maker_fee_bps, taker_fee_bps, status, next_seq)
+     values ($1, 'BTC', 'USDT', 10000, 100000, 5000000, 10, 10, 'open', 1)`,
+    [symbol]);
+  (MARKETS as unknown as string[]).push(symbol);
+}
+
+async function releasePrivateMarket(symbol: string): Promise<void> {
+  const idx = (MARKETS as unknown as string[]).indexOf(symbol);
+  if (idx !== -1) (MARKETS as unknown as string[]).splice(idx, 1);
+  await testPool().query("delete from market_events where market = $1", [symbol]);
+  await testPool().query("delete from markets where symbol = $1", [symbol]);
 }
 
 async function currentSeq(market: string): Promise<bigint> {
@@ -172,9 +201,11 @@ describe("GET /v1/exchange/stream", () => {
     expect(messages).toHaveLength(3);
     expect(messages.map((m) => m.id)).toEqual([String(before + 1n), String(before + 2n), String(before + 3n)]);
     for (const m of messages) {
-      const parsed = JSON.parse(m.data as string) as { channel: string; seq: string; data: { type: string } };
+      const parsed = JSON.parse(m.data as string) as { channel: string; seq: string; data: { type: string; at: string } };
       expect(parsed.channel).toBe("book:BTC-USDT");
       expect(parsed.data.type).toBe("order.accepted");
+      expect(typeof parsed.data.at).toBe("string");
+      expect(new Date(parsed.data.at).toISOString()).toBe(parsed.data.at);
     }
     for (const r of [r1, r2, r3]) await cancelResting(key, r.order.id);
   });
@@ -273,10 +304,60 @@ describe("GET /v1/exchange/stream", () => {
     const trade = messages.find((m) => m.channel === "trades:BTC-USDT");
 
     expect(bookFill).toBeDefined();
-    expect(bookFill!.data).toEqual({ type: "order.filled", price: "8000000000", quantity: "100000", notional: "8000000" });
+    const { at: bookFillAt, ...bookFillRest } = bookFill!.data as Record<string, unknown>;
+    expect(bookFillRest).toEqual({ type: "order.filled", price: "8000000000", quantity: "100000", notional: "8000000" });
+    expect(typeof bookFillAt).toBe("string");
+    expect(new Date(bookFillAt as string).toISOString()).toBe(bookFillAt);
+
     expect(trade).toBeDefined();
-    expect(trade!.data).toEqual({ price: "8000000000", quantity: "100000", notional: "8000000" });
+    const { at: tradeAt, ...tradeRest } = trade!.data as Record<string, unknown>;
+    expect(tradeRest).toEqual({ price: "8000000000", quantity: "100000", notional: "8000000" });
+    expect(typeof tradeAt).toBe("string");
+    expect(new Date(tradeAt as string).toISOString()).toBe(tradeAt);
     expect(Object.keys(trade!.data)).not.toContain("buy_order_id");
     expect(Object.keys(trade!.data)).not.toContain("sell_order_id");
+  });
+
+  it("pages a long replay across multiple queries without skipping or repeating rows", async () => {
+    const symbol = "ZZZ-PAGETEST";
+    const rowCount = 1200;
+    // Well past any real tail tick, so the only way every row can arrive inside this
+    // test's own waitFor window is the initial replay looping through more than one page
+    // on its own; a replay that sends only the first page and leaves the rest for a later
+    // tail tick to trickle out would time out here rather than passing by accident.
+    streamOptions.tailIntervalMs = 60_000;
+    await registerPrivateMarket(symbol);
+    try {
+      // Written directly against market_events, gaplessly seq 1..rowCount, rather than
+      // through place_order: this proves fetchEvents' own paging and pump()'s loop, the
+      // thing this scenario exists to cover, with no dependency on the matching engine or
+      // on anything else in this shared database. rowCount is well over
+      // EVENTS_PAGE_LIMIT (500, src/routes/exchange-stream.ts), so the replay only
+      // completes if the route re-queries at least twice, each time resuming from the
+      // last seq it actually sent.
+      await testPool().query(
+        `insert into market_events (market, seq, type, payload)
+         select $1, gs, 'order.accepted',
+           jsonb_build_object('order_id', 'ord_page_' || gs::text, 'side', case when gs % 2 = 0 then 'buy' else 'sell' end, 'type', 'limit')
+         from generate_series(1, $2::bigint) as gs`,
+        [symbol, rowCount]);
+
+      const { req, frames } = await connectSse(port, `channels=book:${symbol}&since=0`);
+      openReqs.push(req);
+
+      await waitFor(() => frames.filter((f) => f.event === "message").length >= rowCount, 10000);
+      // Settles briefly before the count is asserted as final: the tail is parked at a
+      // minute above, so nothing more should ever arrive once the replay itself is done.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const messages = frames.filter((f) => f.event === "message");
+      expect(messages).toHaveLength(rowCount);
+      expect(messages.map((m) => m.id)).toEqual(Array.from({ length: rowCount }, (_, i) => String(i + 1)));
+      for (const m of messages) {
+        const parsed = JSON.parse(m.data as string) as { data: { at: string } };
+        expect(typeof parsed.data.at).toBe("string");
+      }
+    } finally {
+      await releasePrivateMarket(symbol);
+    }
   });
 });
