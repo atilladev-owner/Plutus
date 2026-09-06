@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import type { Request, Response } from "express";
 import type { Pool } from "pg";
 import type { AppDeps } from "../../src/deps.js";
-import { streamHandler } from "../../src/routes/exchange-stream.js";
+import { streamHandler, streamOptions } from "../../src/routes/exchange-stream.js";
 
 // A slow reader must never make exchange-stream.ts buffer an unbounded amount of unsent
 // data (task 8 fix round 1, finding 2). The integration suite (tests/integration/stream.test.ts)
@@ -89,5 +89,30 @@ describe("streamHandler backpressure", () => {
     expect(poolQuery).toHaveBeenCalledTimes(1);
 
     fakeReq.emit("close");
+  });
+
+  it("registers the drain listener when the heartbeat itself is the write that pauses", async () => {
+    const poolQuery = vi.fn().mockResolvedValue({ rows: [] });
+    const fakeDeps = { pool: { query: poolQuery } as unknown as Pool, logger: { error: vi.fn() } as unknown as AppDeps["logger"] } as unknown as AppDeps;
+    const previous = streamOptions.heartbeatIntervalMs;
+    streamOptions.heartbeatIntervalMs = 15;
+    try {
+      // The first heartbeat write reports backpressure; every later write is accepted.
+      const fakeRes = new FakeRes((callNumber) => callNumber !== 1);
+      const fakeReq = new FakeReq({ channels: "book:BTC-USDT", since: "0" });
+      const done = streamHandler(fakeReq as unknown as Request, fakeRes as unknown as Response, fakeDeps);
+      await waitUntil(() => fakeRes.written.length === 1);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(fakeRes.written).toHaveLength(1);
+      fakeRes.emit("drain");
+      await waitUntil(() => fakeRes.written.length >= 2);
+      expect(fakeRes.written[1]).toBe(": heartbeat
+
+");
+      fakeReq.emit("close");
+      await done;
+    } finally {
+      streamOptions.heartbeatIntervalMs = previous;
+    }
   });
 });

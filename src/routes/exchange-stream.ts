@@ -332,7 +332,11 @@ export async function streamHandler(req: Request, res: Response, deps: AppDeps):
   }, streamOptions.tailIntervalMs);
 
   timers.heartbeat = setInterval(() => {
-    if (!closed && !paused) send(": heartbeat\n\n");
+    if (closed || paused) return;
+    send(": heartbeat\n\n");
+    // The heartbeat can be the write that tips the socket over its high water mark, so it
+    // registers the drain listener like every row write does; otherwise paused stays true.
+    if (paused) void backpressure();
   }, streamOptions.heartbeatIntervalMs);
 
   timers.lifetime = setTimeout(() => {
