@@ -38,7 +38,7 @@ export function buildProductionDeps(env: NodeJS.ProcessEnv = process.env): AppDe
   // which TypeScript erases from the compiled output, so there is no runtime import cycle
   // between deps.ts and platform/deliver.ts despite the logical dependency each way.
   const deps: AppDeps = {
-    pool: createPool(config.DATABASE_URL),
+    pool: createPool(config.DATABASE_URL, (err) => logger.warn({ err }, "idle database client dropped")),
     limiter,
     scheduler: new MemoryScheduler(),
     cache,

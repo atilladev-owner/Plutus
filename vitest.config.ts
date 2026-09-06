@@ -9,5 +9,6 @@ export default defineConfig({
     hookTimeout: 180_000,
     fileParallelism: true,
     maxWorkers: 6,
+    poolOptions: { forks: { execArgv: ["--max-old-space-size=4096"] } },
   },
 });

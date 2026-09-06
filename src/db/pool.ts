@@ -6,14 +6,21 @@ types.setTypeParser(20, (v: string) => v);
 
 export type { Pool, PoolClient } from "pg";
 
-export function createPool(connectionString: string): pg.Pool {
-  return new Pool({
+export function createPool(connectionString: string, onIdleError?: (err: Error) => void): pg.Pool {
+  const pool = new Pool({
     connectionString,
     max: 5,
     idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 5_000,
     statement_timeout: 25_000,
   });
+  // pg emits error on the pool when an idle client drops, which a hosted database does
+  // whenever it closes a quiet connection. Without a listener Node treats that as an
+  // uncaught exception and the process dies. The pool discards the client on its own.
+  pool.on("error", (err) => {
+    if (onIdleError) onIdleError(err);
+  });
+  return pool;
 }
 
 export async function withTx<T>(pool: pg.Pool, fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
