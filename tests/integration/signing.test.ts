@@ -109,4 +109,29 @@ describe("signed requests", () => {
     expect(res.status).toBe(401);
     expect(res.body.code).toBe("invalid_signature");
   });
+
+  it("honours the same rotation grace period as bearer auth, then refuses once it expires", async () => {
+    const { app, deps } = await makeTestApp({}, [...allRoutes, balancesProbe]);
+    const first = await mintKey(app);
+    const rotated = (await request(app).post("/v1/keys/rotate").set(bearer(first.secret)).send()).body as { secret: string };
+    // Still inside the fifteen minute grace period: the old secret still signs successfully,
+    // with the warning header the same way bearerAuth warns about disabled webhook endpoints.
+    const stillValid = await request(app)
+      .get("/v1/exchange/balances")
+      .set(signRequest({ keyId: first.id, secret: first.secret, method: "GET", path: "/v1/exchange/balances", timestamp: Date.now() }));
+    expect(stillValid.status).toBe(200);
+    expect(stillValid.headers["plutus-warning"]).toMatch(/rotated secret/);
+    // Expire the retiring row directly, the same way tests/integration/keys.test.ts does for bearer auth.
+    await deps.pool.query("update api_key_old_secrets set expires_at = now() - interval '1 second' where key_id = $1", [first.id]);
+    const expired = await request(app)
+      .get("/v1/exchange/balances")
+      .set(signRequest({ keyId: first.id, secret: first.secret, method: "GET", path: "/v1/exchange/balances", timestamp: Date.now() }));
+    expect(expired.status).toBe(401);
+    expect(expired.body.code).toBe("invalid_signature");
+    // The new secret still works throughout.
+    const withNewSecret = await request(app)
+      .get("/v1/exchange/balances")
+      .set(signRequest({ keyId: first.id, secret: rotated.secret, method: "GET", path: "/v1/exchange/balances", timestamp: Date.now() }));
+    expect(withNewSecret.status).toBe(200);
+  });
 });

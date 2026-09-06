@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import type { RequestHandler } from "express";
 import { ApiError } from "../domain/errors.js";
 import { hashSecret, safeEqual } from "./auth.js";
-import { getKey, touchKey } from "../db/keys.js";
+import { getKey, touchKey, listActiveOldSecretHashes } from "../db/keys.js";
 import { disabledEndpoints } from "../db/webhooks.js";
 import type { AppDeps } from "../deps.js";
 import type { RouteDef, AuthedKey } from "./route.js";
@@ -95,12 +95,27 @@ export function signedAuth(deps: AppDeps) {
         if (row && row.revoked_at === null && (row.expires_at === null || row.expires_at > new Date())) {
           const path = req.originalUrl;
           const body = req.rawBody ? req.rawBody.toString("utf8") : "";
-          const expected = createHmac("sha256", row.secret_hash).update(signatureMessage(timestamp, req.method, path, body), "utf8").digest("hex");
-          if (safeEqual(expected, signature)) {
+          const message = signatureMessage(timestamp, req.method, path, body);
+          let matched = safeEqual(createHmac("sha256", row.secret_hash).update(message, "utf8").digest("hex"), signature);
+          let usedOldSecret = false;
+          // The current secret failed; a rotation may still leave an old one valid for
+          // fifteen more minutes (rotateKey, db/keys.ts). Tried in order, newest first,
+          // with safeEqual for every compare, same as the current secret above.
+          if (!matched) {
+            const oldHashes = await listActiveOldSecretHashes(client, row.id);
+            for (const oldHash of oldHashes) {
+              const candidate = createHmac("sha256", oldHash).update(message, "utf8").digest("hex");
+              if (safeEqual(candidate, signature)) { matched = true; usedOldSecret = true; break; }
+            }
+          }
+          if (matched) {
             key = { id: row.id, mode: row.mode, scopes: row.scopes, prefix: row.prefix, last4: row.last4 };
             await touchKey(client, row.id);
             const disabled = await disabledEndpoints(client, row.id);
-            if (disabled.length > 0) res.setHeader("Plutus-Warning", `disabled webhook endpoints: ${disabled.join(",")}`);
+            const warnings: string[] = [];
+            if (usedOldSecret) warnings.push("signed with a rotated secret still inside its grace period");
+            if (disabled.length > 0) warnings.push(`disabled webhook endpoints: ${disabled.join(",")}`);
+            if (warnings.length > 0) res.setHeader("Plutus-Warning", warnings.join("; "));
           }
         }
       } finally {

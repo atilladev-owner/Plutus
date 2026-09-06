@@ -31,6 +31,19 @@ export async function getKey(c: PoolClient, id: string): Promise<KeyRow | null> 
   return rows[0] ?? null;
 }
 
+/**
+ * The still-unexpired retiring secret hashes for a key, newest rotation first. signedAuth
+ * looks a key up by id rather than by hash (there is no hash to look up by until the
+ * signature is checked), so it cannot lean on findKeyBySecretHash's single query the way
+ * bearerAuth does; it instead tries the current secret_hash first and falls back to these.
+ */
+export async function listActiveOldSecretHashes(c: PoolClient, keyId: string): Promise<Buffer[]> {
+  const { rows } = await c.query<{ secret_hash: Buffer }>(
+    "select secret_hash from api_key_old_secrets where key_id = $1 and expires_at > now() order by expires_at desc",
+    [keyId]);
+  return rows.map((r) => r.secret_hash);
+}
+
 export async function touchKey(c: PoolClient, id: string): Promise<void> {
   await c.query("update api_keys set last_used_at = now() where id = $1 and (last_used_at is null or last_used_at < now() - interval '1 minute')", [id]);
 }
