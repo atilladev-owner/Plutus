@@ -106,9 +106,7 @@ describe("streamHandler backpressure", () => {
       expect(fakeRes.written).toHaveLength(1);
       fakeRes.emit("drain");
       await waitUntil(() => fakeRes.written.length >= 2);
-      expect(fakeRes.written[1]).toBe(": heartbeat
-
-");
+      expect(fakeRes.written[1]).toBe(": heartbeat\n\n");
       fakeReq.emit("close");
       await done;
     } finally {
