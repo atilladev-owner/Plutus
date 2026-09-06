@@ -11,3 +11,10 @@ export function testPool(): Pool {
   shared ??= createPool(testDatabaseUrl());
   return shared;
 }
+
+/** Ends the shared pool so a worker that runs many files does not accumulate connections. */
+export async function closeTestPool(): Promise<void> {
+  const p = shared;
+  shared = undefined;
+  if (p) await p.end();
+}
