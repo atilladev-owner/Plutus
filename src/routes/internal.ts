@@ -53,9 +53,12 @@ const HOUSE_SEED: Record<string, bigint> = {
  * without touching a real network or the shared BTC-USDT and ETH-USDT books other
  * exchange test files trade on. */
 export async function refreshColdMarkets(
-  deps: AppDeps, refresh: (deps: AppDeps, market: string) => Promise<void> = ensureFreshLadder,
+  deps: AppDeps,
+  refresh: (deps: AppDeps, market: string) => Promise<void> = ensureFreshLadder,
+  candidates?: string[],
 ): Promise<number> {
-  const markets = await withTx(deps.pool, (c) => X.listMarkets(c));
+  // candidates lets a test name the markets to walk without touching the shared markets table.
+  const markets = candidates ? candidates.map((symbol) => ({ symbol, house_quoted_at: null })) : await withTx(deps.pool, (c) => X.listMarkets(c));
   const now = Date.now();
   let refreshed = 0;
   for (const m of markets) {

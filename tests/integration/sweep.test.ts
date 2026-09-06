@@ -111,13 +111,11 @@ describe("the sweep", () => {
   // shared BTC-USDT and ETH-USDT books other exchange test files trade on.
   it("keeps refreshing other markets, and still tops up the house, when one market's own refresh throws", async () => {
     const { deps } = await makeTestApp();
-    await deps.pool.query("update markets set house_quoted_at = null");
-
     let goodCalls = 0;
     const refreshed = await refreshColdMarkets(deps, async (_deps, market) => {
       if (market === "ETH-USDT") throw new Error("simulated: this market's own refresh failed");
       goodCalls++;
-    });
+    }, ["BTC-USDT", "ETH-USDT"]);
     expect(refreshed).toBe(1);
     expect(goodCalls).toBe(1);
 
