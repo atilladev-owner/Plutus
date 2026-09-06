@@ -9,7 +9,7 @@ import { signRequest } from "../../src/platform/signing.js";
 import { generateSecret } from "../../src/platform/auth.js";
 import { insertKey } from "../../src/db/keys.js";
 import * as L from "../../src/db/ledger.js";
-import { verifyChain } from "../../src/domain/verify.js";
+import { verifyExchangeLedger } from "../helpers/exchange.js";
 import { EXCHANGE_LEDGER_ID } from "../../src/db/exchange.js";
 
 // 100,000 USDT (exponent 6), 1 BTC and 10 ETH (exponent 8 each) in minor units, spec 10.2.
@@ -164,19 +164,7 @@ describe("exchange wallets", () => {
     const { rows: holdRows } = await testPool().query<{ status: string }>("select status from holds where id = $1", [holdId]);
     expect(holdRows[0]?.status).toBe("released");
 
-    const { rows: accountRows } = await testPool().query<{ id: string; balance: string; held: string }>(
-      "select id, balance::text as balance, held::text as held from accounts where ledger_id = $1", [EXCHANGE_LEDGER_ID]);
-    const stored = new Map(accountRows.map((r) => [r.id, { balance: BigInt(r.balance), held: BigInt(r.held) }]));
-    async function* entries() {
-      let since = 0n;
-      for (;;) {
-        const batch = await withTx(testPool(), (c) => L.listJournal(c, EXCHANGE_LEDGER_ID, since, 500));
-        if (batch.length === 0) return;
-        for (const row of batch) yield row;
-        since = BigInt(batch[batch.length - 1]!.seq);
-      }
-    }
-    const report = await verifyChain(entries(), stored);
+    const report = await verifyExchangeLedger();
     expect(report).toMatchObject({ ok: true, chain_ok: true, sequence_ok: true, replay_matches: true });
   });
 

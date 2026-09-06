@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { createHash, randomBytes } from "node:crypto";
 import { testPool } from "../helpers/db.js";
+import { verifyExchangeLedger } from "../helpers/exchange.js";
 import { withTx } from "../../src/db/pool.js";
 import { newId } from "../../src/domain/ids.js";
-import { verifyChain } from "../../src/domain/verify.js";
 import { mapDbError } from "../../src/db/errors.js";
 import * as L from "../../src/db/ledger.js";
 import {
@@ -97,20 +97,8 @@ async function marketEventsGapless(market: string): Promise<boolean> {
   return rows.every((r, i) => BigInt(r.seq_text) === BigInt(i + 1));
 }
 
-async function verifyExchangeLedger(): Promise<void> {
-  const { rows: accountRows } = await testPool().query<{ id: string; balance: string; held: string }>(
-    "select id, balance::text as balance, held::text as held from accounts where ledger_id = $1", [EXCHANGE_LEDGER_ID]);
-  const stored = new Map(accountRows.map((r) => [r.id, { balance: BigInt(r.balance), held: BigInt(r.held) }]));
-  async function* entries() {
-    let since = 0n;
-    for (;;) {
-      const batch = await withTx(testPool(), (c) => L.listJournal(c, EXCHANGE_LEDGER_ID, since, 1000));
-      if (batch.length === 0) return;
-      for (const row of batch) yield row;
-      since = BigInt(batch[batch.length - 1]!.seq);
-    }
-  }
-  const report = await verifyChain(entries(), stored);
+async function expectLedgerOk(): Promise<void> {
+  const report = await verifyExchangeLedger();
   expect(report).toMatchObject({ ok: true, chain_ok: true, sequence_ok: true, replay_matches: true });
 }
 
@@ -144,7 +132,7 @@ describe("place_order and cancel_order", () => {
   // and both markets' per market event sequence must stay gapless, whether the scenario
   // accepted, filled, cancelled or rejected an order.
   afterEach(async () => {
-    await verifyExchangeLedger();
+    await expectLedgerOk();
     expect(await marketEventsGapless("BTC-USDT")).toBe(true);
     expect(await marketEventsGapless("ETH-USDT")).toBe(true);
   });
@@ -435,6 +423,26 @@ describe("place_order and cancel_order", () => {
       status: "rejected", reject_reason: "insufficient_funds", hold_id: null, accepted_seq: null,
       price: "8000000000", quantity: "100000",
     });
+  });
+
+  // Task 6 amendment (0016_house_ladder.sql): notional_too_large, the tenth named reason,
+  // found building the house ladder. Ten BTC at 9,300.00 USDT each is an entirely
+  // reasonable order on its own, but price times quantity, 9,300,000,000 times
+  // 1,000,000,000, is 9.3 * 10^18, over bigint's 9,223,372,036,854,775,807 maximum, even
+  // though the notional it actually represents, 93,000,000,000 (93,000.00 USDT), is
+  // nowhere near that on its own: (p_price * p_quantity) / v_divisor used to overflow
+  // computing the numerator alone, before the divide ever ran, crashing as a raw "bigint
+  // out of range" database error instead of accepting an order this ordinary. Fee (10 bps)
+  // is a plain ceil(93,000,000,000 * 10 / 10000) = 93,000,000, hold 93,093,000,000.
+  it("(h) accepts an order whose price times quantity overflows bigint before the divide, when the notional itself does not", async () => {
+    const keyH = await fundedKey();
+    const placed = await placeOrder(testPool(), limitOrder({
+      keyId: keyH, market: "BTC-USDT", side: "buy", price: "9300000000", quantity: "1000000000", clientOrderId: newId("evt"),
+    }));
+    expect(placed.order.status).toBe("open");
+    const hold = await holdOf(placed.order.hold_id);
+    expect(hold).toMatchObject({ status: "open", amount: "93093000000" });
+    await withTx(testPool(), (c) => cancelOrder(c, keyH, placed.order.id));
   });
 
   // Review round 1, finding 1: self_trade, the ninth named reason. A key's own resting

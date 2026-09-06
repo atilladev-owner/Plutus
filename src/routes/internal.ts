@@ -8,8 +8,11 @@ import type { AppDeps } from "../deps.js";
 import { withTx } from "../db/pool.js";
 import * as L from "../db/ledger.js";
 import * as W from "../db/webhooks.js";
+import * as X from "../db/exchange.js";
 import { purgeOld } from "../db/events.js";
 import { purgeExpired } from "../db/idempotency.js";
+import { newId } from "../domain/ids.js";
+import { ensureFreshLadder } from "./exchange-house.js";
 
 const SweepOut = z.object({
   expired_holds: z.number().int(),
@@ -18,7 +21,63 @@ const SweepOut = z.object({
   deleted_events: z.number().int(),
   deleted_idempotency: z.number().int(),
   republished_deliveries: z.number().int(),
+  markets_refreshed: z.number().int(),
+  house_topups: z.number().int(),
 });
+
+const HOUSE_STALE_MS = 15_000;
+
+/** The house's seed, spec 10.2: 10,000 BTC, 100,000 ETH, 1,000,000,000 USDT, all in minor
+ * units. Keyed by the exact account name migration 0011 gave each of the house's three
+ * inventory accounts (never key_house, see 0016_house_ladder.sql's own note on that), so a
+ * plain lookup on the row's own name decides whether it is one of these three at all. */
+const HOUSE_SEED: Record<string, bigint> = {
+  BTC: 1_000_000_000_000n,
+  ETH: 10_000_000_000_000n,
+  USDT: 1_000_000_000_000_000n,
+};
+
+/** Refreshes every market whose house ladder is stale, spec 10.5's own "the daily sweep
+ * refreshes cold markets too". ensureFreshLadder re-checks staleness itself under the
+ * market lock, so this only needs to decide which markets are worth calling it for and
+ * count how many were. */
+async function refreshColdMarkets(deps: AppDeps): Promise<number> {
+  const markets = await withTx(deps.pool, (c) => X.listMarkets(c));
+  const now = Date.now();
+  let refreshed = 0;
+  for (const m of markets) {
+    if (m.house_quoted_at !== null && now - m.house_quoted_at.getTime() < HOUSE_STALE_MS) continue;
+    await ensureFreshLadder(deps, m.symbol);
+    refreshed++;
+  }
+  return refreshed;
+}
+
+/** Tops up any house inventory account below a quarter of its seed, back up to the full
+ * seed, from the world (spec 10.2). Conservation holds because the world goes negative by
+ * exactly the amount transferred in, the same as the house's original seed funding
+ * (0011_exchange.sql). */
+async function topUpHouse(deps: AppDeps): Promise<number> {
+  return withTx(deps.pool, async (c) => {
+    const { rows } = await c.query<{ id: string; asset: string; balance: string }>(
+      "select id, asset, balance::text as balance from accounts where ledger_id = $1 and kind = 'normal' and name = any($2::text[])",
+      [X.EXCHANGE_LEDGER_ID, Object.keys(HOUSE_SEED)]);
+    let topups = 0;
+    for (const row of rows) {
+      const seed = HOUSE_SEED[row.asset];
+      if (seed === undefined) continue;
+      const balance = BigInt(row.balance);
+      if (balance >= seed / 4n) continue;
+      await L.postTransfer(c, {
+        ledgerId: X.EXCHANGE_LEDGER_ID, transferId: newId("tr"),
+        legs: [{ from: `world:${row.asset}`, to: row.id, asset: row.asset, amount: (seed - balance).toString() }],
+        memo: "house top up", metadata: {},
+      });
+      topups++;
+    }
+    return topups;
+  });
+}
 
 /**
  * Daily housekeeping, in three transactions. The first expires holds whose time is up and
@@ -56,7 +115,12 @@ async function sweep({ deps, req }: { deps: AppDeps; req: import("express").Requ
   });
   for (const id of out.stale) await deps.scheduler.schedule(id, 0);
   const { stale, ...rest } = out;
-  return { expired_holds: expiredHolds, deleted_ledgers: idle.ledgers, deleted_keys: idle.keys, ...rest, republished_deliveries: stale.length };
+  const marketsRefreshed = await refreshColdMarkets(deps);
+  const houseTopups = await topUpHouse(deps);
+  return {
+    expired_holds: expiredHolds, deleted_ledgers: idle.ledgers, deleted_keys: idle.keys, ...rest,
+    republished_deliveries: stale.length, markets_refreshed: marketsRefreshed, house_topups: houseTopups,
+  };
 }
 
 export const internalRoutes = [

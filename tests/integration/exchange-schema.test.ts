@@ -1,8 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { testPool } from "../helpers/db.js";
+import { verifyExchangeLedger } from "../helpers/exchange.js";
 import { withTx } from "../../src/db/pool.js";
-import * as L from "../../src/db/ledger.js";
-import { verifyChain } from "../../src/domain/verify.js";
 import { mapDbError } from "../../src/db/errors.js";
 import { EXCHANGE_LEDGER_ID, HOUSE_KEY_ID, MARKETS, listMarkets } from "../../src/db/exchange.js";
 
@@ -49,19 +48,19 @@ describe("exchange schema", () => {
     expect(sandboxRows[0]?.sandbox).toBe(false);
   });
 
-  it("funds the house with the seeded balances and gives it a USDT fee account", async () => {
+  it("funds the house with positive balances seeded at migration, and gives it a USDT fee account", async () => {
     const accounts = await exchangeAccounts();
     const btc = accounts.find((a) => a.kind === "normal" && a.asset === "BTC");
     const eth = accounts.find((a) => a.kind === "normal" && a.asset === "ETH");
     const usdt = accounts.find((a) => a.kind === "normal" && a.asset === "USDT" && a.name === "USDT");
     const fee = accounts.find((a) => a.name === "fee:USDT");
-    expect(btc?.balance).toBe("1000000000000");
-    expect(eth?.balance).toBe("10000000000000");
-    expect(usdt?.balance).toBe("1000000000000000");
-    // Not asserted as exactly "0": from the matching function (Task 4) onward, every fill
-    // in the whole test run, in this file or any other sharing the embedded Postgres,
-    // credits this same account, so a fresh seed only guarantees it exists and is never
-    // negative, not that nothing has traded yet.
+    // Not asserted as exactly the seed (10,000 BTC, 100,000 ETH, 1,000,000,000 USDT, from
+    // this same migration): from task 6 onward the house actually trades, and the fee
+    // account is never the only one that moves. A fresh seed, and every fill or top up
+    // since, only guarantees each stays positive, not that nothing has traded yet.
+    expect(BigInt(btc?.balance ?? "-1")).toBeGreaterThan(0n);
+    expect(BigInt(eth?.balance ?? "-1")).toBeGreaterThan(0n);
+    expect(BigInt(usdt?.balance ?? "-1")).toBeGreaterThan(0n);
     expect(fee).toMatchObject({ asset: "USDT", kind: "normal" });
     expect(BigInt(fee?.balance ?? "-1")).toBeGreaterThanOrEqual(0n);
   });
@@ -78,17 +77,7 @@ describe("exchange schema", () => {
       expect(BigInt(world.get(asset)?.balance ?? "0")).toBe(-sum);
     }
 
-    const stored = new Map(accounts.map((a) => [a.id, { balance: BigInt(a.balance), held: BigInt(a.held) }]));
-    async function* entries() {
-      let since = 0n;
-      for (;;) {
-        const batch = await withTx(testPool(), (c) => L.listJournal(c, EXCHANGE_LEDGER_ID, since, 500));
-        if (batch.length === 0) return;
-        for (const row of batch) yield row;
-        since = BigInt(batch[batch.length - 1]!.seq);
-      }
-    }
-    const report = await verifyChain(entries(), stored);
+    const report = await verifyExchangeLedger();
     expect(report).toMatchObject({ ok: true, chain_ok: true, sequence_ok: true, replay_matches: true });
     expect(report.assets.every((a) => a.sum === "0")).toBe(true);
   });

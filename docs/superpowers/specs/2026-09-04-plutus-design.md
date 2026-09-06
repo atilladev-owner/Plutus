@@ -404,7 +404,7 @@ The house is a key created by migration with accounts funded from the world: 10,
 
 Margin: a limit buy holds `notional + fee` in quote. A limit sell holds `quantity` in base. A market buy holds `quote_amount`. A market sell holds `quantity`. Fills draw from the hold with `from_hold` legs. When an order leaves the book, its hold closes: captured when fills were drawn from it, released when nothing was, and whatever remained goes back to the account either way.
 
-Rejections, all with `order_rejected` and a named reason: `market_halted`, `price_not_tick`, `quantity_not_lot`, `below_min_notional`, `insufficient_funds`, `post_only_would_take`, `fok_not_fillable`, `duplicate_client_order_id`, `self_trade`.
+Rejections, all with `order_rejected` and a named reason: `market_halted`, `price_not_tick`, `quantity_not_lot`, `below_min_notional`, `insufficient_funds`, `post_only_would_take`, `fok_not_fillable`, `duplicate_client_order_id`, `self_trade`, `notional_too_large` (task 6 amendment: `price * quantity` is computed in `numeric` before the divide precisely so this can be caught and named instead of a raw bigint overflow; raised when the result still will not fit back into a `bigint`).
 
 ### 10.4 Matching
 

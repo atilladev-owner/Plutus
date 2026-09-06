@@ -12,7 +12,7 @@ export const OrderStatus = z.enum(["open", "partially_filled", "filled", "cancel
 export const ClientOrderId = z.string().min(1).max(100).regex(/^[A-Za-z0-9_.-]+$/, "letters, digits, underscore, dot or hyphen only");
 
 /**
- * The nine order_rejected reasons and the market's own tick, lot and notional rules are
+ * The ten order_rejected reasons and the market's own tick, lot and notional rules are
  * the database's to enforce (place_order, db/migrations/0013_place_order.sql); this is only
  * the "structural completeness" the SQL function's own comment says the caller is expected
  * to prevent before a request ever reaches it, so an obviously malformed request never

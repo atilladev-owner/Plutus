@@ -26,8 +26,9 @@ export function mapDbError(err: unknown): ApiError | null {
     const seconds = e.detail && /^[1-9][0-9]*$/.test(e.detail) ? e.detail : "1";
     return new ApiError(429, "faucet_cooldown", "the faucet can be used once every 24 hours", undefined, { "Retry-After": seconds });
   }
-  // place_order (db/migrations/0013_place_order.sql) raises this with detail set to one of
-  // the nine named reasons in spec 10.3. The reason is exposed verbatim as the error's
+  // place_order (db/migrations/0013_place_order.sql, amended by 0016_house_ladder.sql's
+  // notional_too_large) raises this with detail set to one of the ten named reasons in
+  // spec 10.3. The reason is exposed verbatim as the error's
   // detail, rather than folded into a human sentence the way the generic RAISED table
   // below does, so a caller can match on it exactly.
   if (e.message === "order_rejected") {

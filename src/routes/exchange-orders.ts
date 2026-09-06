@@ -8,6 +8,7 @@ import { isId, newId } from "../domain/ids.js";
 import { stableJson } from "../domain/canonical.js";
 import { complete } from "../db/idempotency.js";
 import { afterCommit } from "../platform/fanout.js";
+import { ensureFreshLadder } from "./exchange-house.js";
 import * as X from "../db/exchange.js";
 import type { AppDeps } from "../deps.js";
 import { IdParam, PageQuery, PagedOf } from "../schemas/common.js";
@@ -79,6 +80,10 @@ export const exchangeOrderRoutes = [
     auth: "signed", scope: "exchange:trade", weight: 1, placement: true, idempotent: true, status: 201,
     body: OrderCreate, response: OrderOut,
     handler: async ({ key, body, req, res, deps, tx }) => {
+      // Spec 10.5: the house has no loop, it quotes when someone is looking. A placement
+      // is one of the moments that looks, so the ladder on this order's own market is
+      // refreshed first, before place_order ever runs, when it is stale.
+      await ensureFreshLadder(deps, body.market);
       // client_order_id is the idempotency handle (task 5 ruling): the same handle with a
       // byte identical body is a replay of the first order, answered without ever calling
       // place_order again; a different body reusing the same handle falls through to
