@@ -8,7 +8,7 @@ export default defineConfig({
     pool: "forks",
     testTimeout: 30_000,
     hookTimeout: 180_000,
-    fileParallelism: true,
+    fileParallelism: false,
     maxWorkers: 6,
     // vitest 4 moved this out of poolOptions.forks.execArgv (a shape it no longer types or
     // reads) to a plain top level field; unrelated to task 5, fixed here only because it
