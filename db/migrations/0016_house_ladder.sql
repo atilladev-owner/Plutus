@@ -25,6 +25,25 @@ begin
   return v_id;
 end $$;
 
+-- Review finding: exchange_notional below stops a notional from ever exceeding bigint
+-- range, but exchange_fee (0013_place_order.sql) still multiplies that already safe
+-- notional by p_bps in plain bigint arithmetic, `(p_notional * p_bps + 9999) / 10000`.
+-- Bigint's own max is 9,223,372,036,854,775,807; at 10 bps that product alone overflows
+-- for any notional over about 922,337,203,685,477,580, a value exchange_notional's own
+-- guard happily lets through since it is still comfortably under bigint max on its own.
+-- The result was the same raw "bigint out of range" crash exchange_notional was built to
+-- stop, just one step later. Computed through numeric instead, which cannot overflow.
+-- Numeric division is exact, not integer division the way the original bigint division
+-- was, so floor is taken before the cast back to bigint: casting a numeric like
+-- 93,000,000.9999 straight to bigint rounds to the nearest integer (93,000,001) in
+-- Postgres, not truncate, which would silently change every fee that used to floor
+-- (93,000,000) into one a cent higher. floor keeps this an exact drop in replacement for
+-- every value that never overflowed at all.
+create or replace function exchange_fee(p_notional bigint, p_bps int) returns bigint
+language sql immutable as $$
+  select floor((p_notional::numeric * p_bps + 9999) / 10000)::bigint
+$$;
+
 -- Real defect found building the house ladder: a limit order whose price and quantity are
 -- each perfectly ordinary on their own, ten BTC at ten thousand dollars each, for instance,
 -- can still make place_order's own `(p_price * p_quantity) / v_divisor` overflow bigint

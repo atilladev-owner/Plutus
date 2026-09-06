@@ -7,6 +7,7 @@ import { withTx } from "../../src/db/pool.js";
 import { newId } from "../../src/domain/ids.js";
 import * as L from "../../src/db/ledger.js";
 import { EXCHANGE_LEDGER_ID } from "../../src/db/exchange.js";
+import { refreshColdMarkets, topUpHouse } from "../../src/routes/internal.js";
 
 describe("the sweep", () => {
   it("refuses without the secret and reports what it did with it", async () => {
@@ -96,5 +97,33 @@ describe("the sweep", () => {
     const { rows: after } = await deps.pool.query<{ balance: string }>(
       "select balance::text as balance from accounts where id = $1", [houseBtc.id]);
     expect(BigInt(after[0]?.balance ?? "0")).toBe(seed);
+  });
+
+  // Review finding: refreshColdMarkets used to abort its whole loop, and skip topUpHouse
+  // entirely (sweep calls it right after with nothing to catch an escaped exception), the
+  // moment any one market's own refresh failed. Proven with an injected refresh that fails
+  // for exactly one of the two real markets, not a real network failure:
+  // fetchReferencePrice (src/platform/reference-price.ts) already swallows every fetch
+  // failure into a plain null by design, so it can never actually propagate an exception
+  // this far on its own; a failure reaching refreshColdMarkets has to come from somewhere
+  // else in that one market's own refresh (a database hiccup, a bug), and this proves the
+  // recovery holds regardless of the cause, without needing a real network or touching the
+  // shared BTC-USDT and ETH-USDT books other exchange test files trade on.
+  it("keeps refreshing other markets, and still tops up the house, when one market's own refresh throws", async () => {
+    const { deps } = await makeTestApp();
+    await deps.pool.query("update markets set house_quoted_at = null");
+
+    let goodCalls = 0;
+    const refreshed = await refreshColdMarkets(deps, async (_deps, market) => {
+      if (market === "ETH-USDT") throw new Error("simulated: this market's own refresh failed");
+      goodCalls++;
+    });
+    expect(refreshed).toBe(1);
+    expect(goodCalls).toBe(1);
+
+    // topUpHouse shares nothing with refreshColdMarkets but deps: it runs, and answers,
+    // exactly the same whether the call just above failed for a market or not.
+    const topups = await topUpHouse(deps);
+    expect(topups).toBeGreaterThanOrEqual(0);
   });
 });

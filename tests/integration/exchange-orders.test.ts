@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { Express } from "express";
 import request from "supertest";
@@ -7,6 +7,7 @@ import { mintKey, bearer } from "../helpers/keys.js";
 import { signRequest } from "../../src/platform/signing.js";
 import { MemoryScheduler } from "../../src/platform/scheduler.js";
 import { deliverOnce } from "../../src/platform/deliver.js";
+import { verifyExchangeLedger } from "../helpers/exchange.js";
 
 // The orders HTTP surface, spec 10.10, over the matching engine task 4 already proved at
 // the database layer (tests/integration/matching.test.ts): place, cancel by id or
@@ -76,6 +77,15 @@ function receiver(): Promise<{ url: string; got: Received[]; close: () => void }
 }
 
 describe("exchange orders", () => {
+  // Review finding: this file never checked verify's own global invariants the way every
+  // other exchange test file does (tests/integration/matching.test.ts,
+  // exchange-wallet.test.ts, exchange-schema.test.ts), despite placing, filling and
+  // cancelling real orders on the same shared ldg_exchange every one of those checks.
+  afterEach(async () => {
+    const report = await verifyExchangeLedger();
+    expect(report).toMatchObject({ ok: true, chain_ok: true, sequence_ok: true, replay_matches: true });
+  });
+
   it("places a limit order and reads it back identically, every money field a string", async () => {
     const { app } = await makeTestApp();
     const k = await fundedKey(app);

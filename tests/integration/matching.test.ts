@@ -445,6 +445,21 @@ describe("place_order and cancel_order", () => {
     await withTx(testPool(), (c) => cancelOrder(c, keyH, placed.order.id));
   });
 
+  // Review finding: exchange_fee's own `p_notional * p_bps` is a second, independent
+  // overflow the notional guard above does not reach, since it runs on a notional already
+  // confirmed to fit bigint on its own. At 10 bps, a notional past about
+  // 922,337,203,685,477,580 (bigint max divided by 10) makes that product alone exceed
+  // bigint max, 9,223,372,036,854,775,807, crashing the same raw "bigint out of range" way
+  // exchange_notional was built to stop. 922,337,203,685,477,581 times 10 plus 9,999,
+  // divided by 10,000 and floored (exchange_fee is now computed through numeric, not a
+  // bigint product) is exactly 922,337,203,685,478: hand computed, not derived from the
+  // function under test.
+  it("exchange_fee computes through numeric, so a notional whose own product with bps would overflow bigint still returns the exact fee", async () => {
+    const { rows } = await testPool().query<{ fee: string }>(
+      "select exchange_fee($1::bigint, $2::int)::text as fee", ["922337203685477581", 10]);
+    expect(rows[0]?.fee).toBe("922337203685478");
+  });
+
   // Review round 1, finding 1: self_trade, the ninth named reason. A key's own resting
   // order is still just an order sitting on the book; without this check the walk would
   // build a post_transfer leg moving money from that key's own account to itself, and

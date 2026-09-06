@@ -40,15 +40,32 @@ const HOUSE_SEED: Record<string, bigint> = {
 /** Refreshes every market whose house ladder is stale, spec 10.5's own "the daily sweep
  * refreshes cold markets too". ensureFreshLadder re-checks staleness itself under the
  * market lock, so this only needs to decide which markets are worth calling it for and
- * count how many were. */
-async function refreshColdMarkets(deps: AppDeps): Promise<number> {
+ * count how many were.
+ *
+ * Review finding: one market's own refresh failing, for any reason, used to abort this
+ * whole loop and, since sweep below runs topUpHouse right after it with nothing to catch
+ * an escaped exception, the house top up too, on a day the sweep had the most reason to
+ * run both. Each market's refresh is wrapped in its own try/catch instead: a failure is
+ * logged (so it is visible, not silent) and counted as not refreshed, but every other
+ * market this call finds stale still gets its own attempt, and the caller always gets a
+ * count back rather than an exception. refresh defaults to the real ensureFreshLadder;
+ * tests/integration/sweep.test.ts passes its own, to make one market fail on demand
+ * without touching a real network or the shared BTC-USDT and ETH-USDT books other
+ * exchange test files trade on. */
+export async function refreshColdMarkets(
+  deps: AppDeps, refresh: (deps: AppDeps, market: string) => Promise<void> = ensureFreshLadder,
+): Promise<number> {
   const markets = await withTx(deps.pool, (c) => X.listMarkets(c));
   const now = Date.now();
   let refreshed = 0;
   for (const m of markets) {
     if (m.house_quoted_at !== null && now - m.house_quoted_at.getTime() < HOUSE_STALE_MS) continue;
-    await ensureFreshLadder(deps, m.symbol);
-    refreshed++;
+    try {
+      await refresh(deps, m.symbol);
+      refreshed++;
+    } catch (err) {
+      deps.logger.error({ market: m.symbol, err: (err as Error).message }, "house ladder refresh failed; the next sweep tries again");
+    }
   }
   return refreshed;
 }
@@ -56,8 +73,10 @@ async function refreshColdMarkets(deps: AppDeps): Promise<number> {
 /** Tops up any house inventory account below a quarter of its seed, back up to the full
  * seed, from the world (spec 10.2). Conservation holds because the world goes negative by
  * exactly the amount transferred in, the same as the house's original seed funding
- * (0011_exchange.sql). */
-async function topUpHouse(deps: AppDeps): Promise<number> {
+ * (0011_exchange.sql). Runs unconditionally after refreshColdMarkets, win or lose: the two
+ * share nothing but deps, so a market's own refresh failing never has anything to do with
+ * whether the house's own balances get topped up. */
+export async function topUpHouse(deps: AppDeps): Promise<number> {
   return withTx(deps.pool, async (c) => {
     const { rows } = await c.query<{ id: string; asset: string; balance: string }>(
       "select id, asset, balance::text as balance from accounts where ledger_id = $1 and kind = 'normal' and name = any($2::text[])",
