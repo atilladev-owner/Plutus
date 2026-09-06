@@ -29,9 +29,15 @@ export interface RouteDef<P = unknown, Q = unknown, B = unknown, R = unknown> {
   path: string;
   summary: string;
   tag: string;
-  auth: "none" | "bearer";
+  auth: "none" | "bearer" | "signed";
   scope?: Scope;
   limit?: RateBucket | "standard" | "none";
+  /** Endpoint weight (spec 10.9), charged by weightLimit against the signed caller's
+   * 1,200 per minute budget. Only meaningful on a "signed" route. */
+  weight?: number;
+  /** Order placement also spends one point a second against a ten per second cap,
+   * on top of its weight (spec 10.9). Only meaningful on a "signed" route. */
+  placement?: boolean;
   idempotent?: boolean;
   params?: ZodType<P>;
   query?: ZodType<Q>;

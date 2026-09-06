@@ -1,36 +1,44 @@
-import type { RequestHandler } from "express";
+import type { RequestHandler, Response } from "express";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import { ApiError } from "../domain/errors.js";
 import type { AppDeps } from "../deps.js";
 import type { RouteDef, AuthedKey } from "./route.js";
 
-export type RateBucket = "mint" | "sandbox" | "live" | "verify";
+export type RateBucket = "mint" | "sandbox" | "live" | "verify" | "weight" | "place";
 export interface RateResult { ok: boolean; limit: number; remaining: number; resetAt: number }
-export interface RateLimiter { limit(bucket: RateBucket, id: string): Promise<RateResult> }
+export interface RateLimiter { limit(bucket: RateBucket, id: string, points?: number): Promise<RateResult> }
 
 export const RATE_RULES: Record<RateBucket, { points: number; windowSeconds: number }> = {
   mint: { points: 5, windowSeconds: 3600 },
   sandbox: { points: 60, windowSeconds: 60 },
   live: { points: 600, windowSeconds: 60 },
   verify: { points: 10, windowSeconds: 60 },
+  // Endpoint weights, spec 10.9: 1,200 weight per minute per key, plus a ten per second
+  // cap on order placement that weightLimit (weights.ts) charges on top of the weight.
+  weight: { points: 1200, windowSeconds: 60 },
+  place: { points: 10, windowSeconds: 1 },
 };
 
-/** Sliding window in process. Correct for one instance, which is exactly what tests and local dev are. */
+/** Sliding window in process. Correct for one instance, which is exactly what tests and local dev are.
+ * Each hit remembers its own point cost so a variable weight (not just one point per call)
+ * can share the same window and remaining-budget accounting. */
 export class MemoryRateLimiter implements RateLimiter {
-  private readonly hits = new Map<string, number[]>();
+  private readonly hits = new Map<string, Array<{ at: number; points: number }>>();
   constructor(private readonly now: () => number = () => Date.now()) {}
-  async limit(bucket: RateBucket, id: string): Promise<RateResult> {
+  async limit(bucket: RateBucket, id: string, points = 1): Promise<RateResult> {
     const rule = RATE_RULES[bucket];
     const key = `${bucket}:${id}`;
     const t = this.now();
     const windowStart = t - rule.windowSeconds * 1000;
-    const kept = (this.hits.get(key) ?? []).filter((h) => h > windowStart);
-    const ok = kept.length < rule.points;
-    if (ok) kept.push(t);
+    const kept = (this.hits.get(key) ?? []).filter((h) => h.at > windowStart);
+    const used = kept.reduce((sum, h) => sum + h.points, 0);
+    const ok = used + points <= rule.points;
+    if (ok) kept.push({ at: t, points });
     this.hits.set(key, kept);
-    const oldest = kept[0] ?? t;
-    return { ok, limit: rule.points, remaining: Math.max(0, rule.points - kept.length), resetAt: oldest + rule.windowSeconds * 1000 };
+    const usedNow = kept.reduce((sum, h) => sum + h.points, 0);
+    const oldest = kept[0]?.at ?? t;
+    return { ok, limit: rule.points, remaining: Math.max(0, rule.points - usedNow), resetAt: oldest + rule.windowSeconds * 1000 };
   }
 }
 
@@ -42,11 +50,44 @@ export class UpstashRateLimiter implements RateLimiter {
       redis, prefix: `plutus:rl:${b}`,
       limiter: Ratelimit.slidingWindow(RATE_RULES[b].points, `${RATE_RULES[b].windowSeconds} s`),
     });
-    this.limiters = { mint: make("mint"), sandbox: make("sandbox"), live: make("live"), verify: make("verify") };
+    this.limiters = {
+      mint: make("mint"), sandbox: make("sandbox"), live: make("live"), verify: make("verify"),
+      weight: make("weight"), place: make("place"),
+    };
   }
-  async limit(bucket: RateBucket, id: string): Promise<RateResult> {
-    const r = await this.limiters[bucket].limit(id);
+  async limit(bucket: RateBucket, id: string, points = 1): Promise<RateResult> {
+    const r = await this.limiters[bucket].limit(id, { rate: points });
     return { ok: r.success, limit: r.limit, remaining: r.remaining, resetAt: r.reset };
+  }
+}
+
+/** Sets the RateLimit-* headers a result implies and returns the Retry-After value in
+ * seconds. Shared by rateLimitMiddleware below and by weightLimit (weights.ts), so the
+ * two never drift into emitting slightly different headers for the same kind of result. */
+export function applyRateLimitHeaders(res: Response, result: RateResult): number {
+  const msLeft = result.resetAt - Date.now();
+  const resetSeconds = msLeft <= 0 ? 1 : Math.trunc((msLeft + 999) / 1000);
+  res.setHeader("RateLimit-Limit", String(result.limit));
+  res.setHeader("RateLimit-Remaining", String(result.remaining));
+  res.setHeader("RateLimit-Reset", String(resetSeconds));
+  return resetSeconds;
+}
+
+/** Calls the configured limiter with the same half second budget rateLimitMiddleware always
+ * enforced, failing closed with 503 rather than letting a wedged limiter hang the request.
+ * Shared with weightLimit (weights.ts) for the same reason applyRateLimitHeaders is. */
+export async function limitWithTimeout(deps: AppDeps, bucket: RateBucket, id: string, points = 1): Promise<RateResult> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      deps.limiter.limit(bucket, id, points),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("limiter timeout")), 500); }),
+    ]);
+  } catch (err) {
+    deps.logger.error({ err: (err as Error).message }, "rate limiter unavailable");
+    throw new ApiError(503, "rate_limiter_unavailable", "the rate limiter is unreachable; try again shortly");
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -58,24 +99,8 @@ export function rateLimitMiddleware(deps: AppDeps) {
       const key = res.locals.key as AuthedKey | undefined;
       const bucket: RateBucket = mode === "standard" ? (key?.mode === "live" ? "live" : "sandbox") : mode;
       const id = key?.id ?? req.ip ?? "unknown";
-      let result: RateResult;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      try {
-        result = await Promise.race([
-          deps.limiter.limit(bucket, id),
-          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("limiter timeout")), 500); }),
-        ]);
-      } catch (err) {
-        deps.logger.error({ err: (err as Error).message }, "rate limiter unavailable");
-        throw new ApiError(503, "rate_limiter_unavailable", "the rate limiter is unreachable; try again shortly");
-      } finally {
-        clearTimeout(timer);
-      }
-      const msLeft = result.resetAt - Date.now();
-      const resetSeconds = msLeft <= 0 ? 1 : Math.trunc((msLeft + 999) / 1000);
-      res.setHeader("RateLimit-Limit", String(result.limit));
-      res.setHeader("RateLimit-Remaining", String(result.remaining));
-      res.setHeader("RateLimit-Reset", String(resetSeconds));
+      const result = await limitWithTimeout(deps, bucket, id);
+      const resetSeconds = applyRateLimitHeaders(res, result);
       if (!result.ok) throw new ApiError(429, "rate_limited", `limit of ${result.limit} per window reached`, undefined, { "Retry-After": String(resetSeconds) });
       next();
     } catch (err) {
