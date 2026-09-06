@@ -19,7 +19,8 @@ export function weightLimit(deps: AppDeps) {
     try {
       const key = res.locals.key as AuthedKey | undefined;
       if (!key) throw new ApiError(401, "invalid_signature", "a signed request is required");
-      const weightResult = await limitWithTimeout(deps, "weight", key.id, def.weight ?? 1);
+      const weight = typeof def.weight === "function" ? def.weight(req) : (def.weight ?? 1);
+      const weightResult = await limitWithTimeout(deps, "weight", key.id, weight);
       const weightReset = applyRateLimitHeaders(res, weightResult);
       if (!weightResult.ok) {
         throw new ApiError(429, "rate_limited", `limit of ${weightResult.limit} per window reached`, undefined, { "Retry-After": String(weightReset) });

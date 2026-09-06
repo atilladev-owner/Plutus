@@ -1,0 +1,12 @@
+-- Task 5: client_order_id is the idempotency handle for placing an order, but
+-- place_order's own duplicate check (0013_place_order.sql) cannot tell a genuine retry of
+-- the same request from a second, different order that happens to reuse the same handle:
+-- both hit duplicate_client_order_id today. body_fingerprint records a stable hash of the
+-- request body an order was placed with, written once by src/db/exchange.ts's placeOrder
+-- wrapper in the same transaction as the insert. A caller looking up an existing order by
+-- (key_id, client_order_id) before ever calling place_order compares fingerprints itself:
+-- identical, and it is a replay, so the first order is returned with Idempotent-Replayed;
+-- different, and the call proceeds to place_order, whose own check answers
+-- duplicate_client_order_id exactly as it already does today. Null for every order placed
+-- without a client_order_id, and for any order placed before this column existed.
+alter table orders add column body_fingerprint text;

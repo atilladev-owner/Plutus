@@ -2,7 +2,13 @@ import { z } from "zod";
 import { Iso } from "./common.js";
 import { assertPublicWebhookUrl } from "../platform/webhook-url.js";
 
-export const EVENT_TYPES = ["transfer.posted", "hold.created", "hold.captured", "hold.released", "hold.expired"] as const;
+export const EVENT_TYPES = [
+  "transfer.posted", "hold.created", "hold.captured", "hold.released", "hold.expired",
+  // The order lifecycle events place_order and cancel_order write for the trading key
+  // (db/migrations/0013_place_order.sql), so a webhook can subscribe to one of these by
+  // name instead of only ever through "*", spec 10.4 step 6.
+  "order.accepted", "order.filled", "order.cancelled", "order.rejected",
+] as const;
 
 const EndpointFields = z.object({
   url: z.string().url(),

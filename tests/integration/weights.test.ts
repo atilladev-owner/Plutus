@@ -18,8 +18,11 @@ const balancesProbe = defineRoute({
   handler: async () => ({ ok: true }),
 });
 
+// Mounted under /_probe (same reasoning as tests/integration/signing.test.ts): task 5 gave
+// POST /v1/exchange/orders a production handler, and a probe at that same path would now
+// be shadowed by it instead of testing the placement cap in isolation.
 const orderProbe = defineRoute({
-  method: "post", path: "/v1/exchange/orders", summary: "throwaway signed order placement probe", tag: "Test",
+  method: "post", path: "/v1/exchange/_probe/orders", summary: "throwaway signed order placement probe", tag: "Test",
   auth: "signed", scope: "exchange:trade", weight: 1, placement: true,
   body: z.object({}).optional(),
   response: z.object({ ok: z.boolean() }),
@@ -58,10 +61,10 @@ describe("endpoint weights", () => {
     const { app } = await makeTestApp({}, [...allRoutes, balancesProbe, orderProbe]);
     const k = await mintKey(app);
     for (let i = 0; i < 10; i++) {
-      const res = await request(app).post("/v1/exchange/orders").set(sign(k.id, k.secret, "POST", "/v1/exchange/orders")).send();
+      const res = await request(app).post("/v1/exchange/_probe/orders").set(sign(k.id, k.secret, "POST", "/v1/exchange/_probe/orders")).send();
       expect(res.status).toBe(200);
     }
-    const eleventh = await request(app).post("/v1/exchange/orders").set(sign(k.id, k.secret, "POST", "/v1/exchange/orders")).send();
+    const eleventh = await request(app).post("/v1/exchange/_probe/orders").set(sign(k.id, k.secret, "POST", "/v1/exchange/_probe/orders")).send();
     expect(eleventh.status).toBe(429);
     expect(eleventh.body.code).toBe("rate_limited");
     const read = await request(app).get("/v1/exchange/balances").set(sign(k.id, k.secret, "GET", "/v1/exchange/balances"));

@@ -33,8 +33,12 @@ export interface RouteDef<P = unknown, Q = unknown, B = unknown, R = unknown> {
   scope?: Scope;
   limit?: RateBucket | "standard" | "none";
   /** Endpoint weight (spec 10.9), charged by weightLimit against the signed caller's
-   * 1,200 per minute budget. Only meaningful on a "signed" route. */
-  weight?: number;
+   * 1,200 per minute budget. Only meaningful on a "signed" route. A function reads the raw
+   * request instead of a fixed number for the one endpoint spec 10.9 prices two ways
+   * depending on a query parameter: GET /v1/exchange/orders is 5 for open orders and 10 for
+   * history, both the same path and handler, told apart only by ?status=. Read before
+   * params or query are parsed, so it sees req.query directly, not the validated shape. */
+  weight?: number | ((req: Request) => number);
   /** Order placement also spends one point a second against a ten per second cap,
    * on top of its weight (spec 10.9). Only meaningful on a "signed" route. */
   placement?: boolean;

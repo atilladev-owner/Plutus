@@ -11,10 +11,11 @@ import { verifyRoutes } from "./verify.js";
 import { webhookRoutes } from "./webhooks.js";
 import { internalRoutes } from "./internal.js";
 import { exchangeWalletRoutes } from "./exchange-wallet.js";
+import { exchangeOrderRoutes } from "./exchange-orders.js";
 import { docsRoutes } from "./docs.js";
 
 export const allRoutes = [
   ...healthRoutes, ...assetRoutes, ...keyRoutes,
   ...ledgerRoutes, ...accountRoutes, ...transferRoutes, ...holdRoutes, ...journalRoutes, ...eventRoutes, ...verifyRoutes,
-  ...webhookRoutes, ...internalRoutes, ...exchangeWalletRoutes, ...docsRoutes,
+  ...webhookRoutes, ...internalRoutes, ...exchangeWalletRoutes, ...exchangeOrderRoutes, ...docsRoutes,
 ];
