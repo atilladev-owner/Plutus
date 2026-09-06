@@ -24,20 +24,42 @@ import type { AppDeps } from "../deps.js";
 
 const CACHE_TTL_SECONDS = 2;
 
+/**
+ * The cache is never the source of truth (spec 10.6 only ever calls it an optimisation), so
+ * neither side of it is allowed to turn a public read into a 500: a get failure is treated
+ * as a plain miss, a set failure is swallowed outright, and either is logged rather than
+ * thrown. tests/integration/market-data.test.ts proves this with a fake cache whose get
+ * (and set) throw, asserting the route still answers 200 with the real, freshly read
+ * document.
+ */
 async function readCache<T>(deps: AppDeps, key: string): Promise<T | null> {
-  const hit = await deps.cache.get(key);
-  return hit === null ? null : (JSON.parse(hit) as T);
+  try {
+    const hit = await deps.cache.get(key);
+    return hit === null ? null : (JSON.parse(hit) as T);
+  } catch (err) {
+    deps.logger.warn({ err: (err as Error).message, key }, "market data cache read failed; treating as a miss");
+    return null;
+  }
 }
 
 async function writeCache(deps: AppDeps, key: string, value: unknown): Promise<void> {
-  await deps.cache.set(key, JSON.stringify(value), CACHE_TTL_SECONDS);
+  try {
+    await deps.cache.set(key, JSON.stringify(value), CACHE_TTL_SECONDS);
+  } catch (err) {
+    deps.logger.warn({ err: (err as Error).message, key }, "market data cache write failed; answering uncached");
+  }
 }
 
-/** 404s an unknown symbol; a well shaped but nonexistent one (MarketSymbol's regex only
- * checks the BASE-QUOTE shape) reaches here rather than being caught by params validation. */
-async function requireMarket(deps: AppDeps, symbol: string): Promise<void> {
+/** 404s an unknown symbol (a well shaped but nonexistent one, MarketSymbol's regex only
+ * checks the BASE-QUOTE shape, reaches here rather than being caught by params validation),
+ * otherwise returns the row so a caller that also wants it (book, ticker) never fetches the
+ * same market twice. Always called after ensureFreshLadder, not before, so the row this
+ * returns, and the seq a caller reads off it, reflect any house ladder that call just
+ * refreshed rather than the market's state a moment before it. */
+async function requireMarket(deps: AppDeps, symbol: string): Promise<X.MarketRow> {
   const market = await withTx(deps.pool, (c) => X.getMarket(c, symbol));
   if (!market) throw notFound("market");
+  return market;
 }
 
 /** The market's current sequence position, spec 10.6's "seq": next_seq is the sequence the
@@ -83,13 +105,14 @@ export const exchangeMarketDataRoutes = [
       const cacheKey = `md:${req.originalUrl}`;
       const hit = await readCache<z.infer<typeof BookOut>>(deps, cacheKey);
       if (hit) return hit;
-      await requireMarket(deps, params.symbol);
       // Spec 10.5: a book read is one of the moments the house looks, so its own ladder on
-      // this market is refreshed first, before the book itself is read, when stale.
+      // this market is refreshed first, before the book itself, and before the market row
+      // requireMarket below reads for seq, both of which should reflect it when it runs.
+      // ensureFreshLadder is a no-op for a symbol that turns out not to exist, so calling it
+      // ahead of the existence check costs nothing on the 404 path either.
       await ensureFreshLadder(deps, params.symbol);
+      const market = await requireMarket(deps, params.symbol);
       const document = await withTx(deps.pool, async (c) => {
-        const market = await X.getMarket(c, params.symbol);
-        if (!market) throw notFound("market");
         const bids = await M.getBookLevels(c, params.symbol, "buy", query.depth);
         const asks = await M.getBookLevels(c, params.symbol, "sell", query.depth);
         return { market: params.symbol, seq: currentSeq(market), bids, asks };
@@ -106,8 +129,8 @@ export const exchangeMarketDataRoutes = [
       const cacheKey = `md:${req.originalUrl}`;
       const hit = await readCache<z.infer<typeof PublicTradesOut>>(deps, cacheKey);
       if (hit) return hit;
-      await requireMarket(deps, params.symbol);
       await ensureFreshLadder(deps, params.symbol);
+      await requireMarket(deps, params.symbol);
       const document = await withTx(deps.pool, async (c) => ({ data: await M.listPublicTrades(c, params.symbol, query.limit) }));
       await writeCache(deps, cacheKey, document);
       return document;
@@ -121,11 +144,9 @@ export const exchangeMarketDataRoutes = [
       const cacheKey = `md:${req.originalUrl}`;
       const hit = await readCache<z.infer<typeof TickerOut>>(deps, cacheKey);
       if (hit) return hit;
-      await requireMarket(deps, params.symbol);
       await ensureFreshLadder(deps, params.symbol);
+      const market = await requireMarket(deps, params.symbol);
       const document = await withTx(deps.pool, async (c) => {
-        const market = await X.getMarket(c, params.symbol);
-        if (!market) throw notFound("market");
         const ticker = await M.getTicker(c, params.symbol);
         return { market: params.symbol, seq: currentSeq(market), ...ticker };
       });
@@ -141,8 +162,8 @@ export const exchangeMarketDataRoutes = [
       const cacheKey = `md:${req.originalUrl}`;
       const hit = await readCache<z.infer<typeof CandlesOut>>(deps, cacheKey);
       if (hit) return hit;
-      await requireMarket(deps, params.symbol);
       await ensureFreshLadder(deps, params.symbol);
+      await requireMarket(deps, params.symbol);
       const document = await withTx(deps.pool, async (c) => ({ data: await M.getCandles(c, params.symbol, query.interval, query.limit) }));
       await writeCache(deps, cacheKey, document);
       return document;
@@ -151,16 +172,16 @@ export const exchangeMarketDataRoutes = [
   defineRoute({
     method: "get", path: "/v1/exchange/verify", summary: "The public proof that the exchange cannot create or destroy money", tag: "Exchange",
     auth: "none", limit: "verify_public", response: VerifyReportOut,
-    handler: async ({ deps }) => withTx(deps.pool, async (c) => {
+    handler: async ({ deps }) => {
       // key_house owns ldg_exchange (db/migrations/0011_exchange.sql), and getLedger's
       // lookup is by (id, key_id) equality, so this is the same lookup ownLedger does for
       // the signed, per key verify route, just against the one key that actually owns this
       // one fixed ledger. Not IdParam("ldg"): ldg_exchange does not match its 32 hex shape
       // (task 1 review note), so this route names the ledger directly rather than through a
       // path parameter at all.
-      const ledger = await L.getLedger(c, X.HOUSE_KEY_ID, X.EXCHANGE_LEDGER_ID);
+      const ledger = await withTx(deps.pool, (c) => L.getLedger(c, X.HOUSE_KEY_ID, X.EXCHANGE_LEDGER_ID));
       if (!ledger) throw notFound("ledger");
-      return verifyLedgerReport(c, deps, ledger.id, ledger.next_seq);
-    }),
+      return verifyLedgerReport(deps, ledger.id, ledger.next_seq);
+    },
   }),
 ];

@@ -7,6 +7,7 @@ import { makeTestApp } from "../helpers/app.js";
 import { withTx } from "../../src/db/pool.js";
 import { newId } from "../../src/domain/ids.js";
 import * as M from "../../src/db/market-data.js";
+import type { Cache } from "../../src/platform/cache.js";
 
 // The public market data endpoints, spec 10.6, and the public proof, spec 10.6's last row.
 // The book, trades, ticker and candle scenarios below insert orders and trades directly
@@ -211,6 +212,18 @@ describe("public market data", () => {
     expect(second.status).toBe(200);
     expect(wrapped.count()).toBe(afterFirst);
     expect(second.body).toEqual(first.body);
+  });
+
+  it("treats a cache read or write failure as a miss, not a 500", async () => {
+    const brokenCache: Cache = {
+      get: async () => { throw new Error("redis unreachable"); },
+      set: async () => { throw new Error("redis unreachable"); },
+    };
+    const { app } = await makeTestApp({ cache: brokenCache });
+    const res = await request(app).get("/v1/exchange/markets");
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.length).toBeGreaterThan(0);
   });
 
   it("limits the public proof to two calls a minute per IP, then 429", async () => {
