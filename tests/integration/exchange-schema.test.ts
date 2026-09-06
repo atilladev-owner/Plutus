@@ -58,7 +58,12 @@ describe("exchange schema", () => {
     expect(btc?.balance).toBe("1000000000000");
     expect(eth?.balance).toBe("10000000000000");
     expect(usdt?.balance).toBe("1000000000000000");
-    expect(fee).toMatchObject({ asset: "USDT", kind: "normal", balance: "0" });
+    // Not asserted as exactly "0": from the matching function (Task 4) onward, every fill
+    // in the whole test run, in this file or any other sharing the embedded Postgres,
+    // credits this same account, so a fresh seed only guarantees it exists and is never
+    // negative, not that nothing has traded yet.
+    expect(fee).toMatchObject({ asset: "USDT", kind: "normal" });
+    expect(BigInt(fee?.balance ?? "-1")).toBeGreaterThanOrEqual(0n);
   });
 
   it("balances the world against the house on the fresh ledger, and verify reports ok", async () => {

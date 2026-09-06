@@ -1,4 +1,6 @@
-import type { PoolClient } from "pg";
+import type { Pool, PoolClient } from "pg";
+import { withTx } from "./pool.js";
+import { newId } from "../domain/ids.js";
 
 /** The system ledger and key the house trades from, created once by
  * db/migrations/0011_exchange.sql with these exact ids, so later tasks can hard code
@@ -59,4 +61,75 @@ export async function exchangeFaucet(c: PoolClient, keyId: string): Promise<stri
 export async function exchangeReset(c: PoolClient, keyId: string): Promise<string[]> {
   const { rows } = await c.query<{ r: FunctionResult }>("select exchange_reset($1, now()) as r", [keyId]);
   return (rows[0] as { r: FunctionResult }).r.event_ids;
+}
+
+export type OrderSide = "buy" | "sell";
+export type OrderType = "limit" | "market";
+export type TimeInForce = "GTC" | "IOC" | "FOK";
+export type OrderStatus = "open" | "partially_filled" | "filled" | "cancelled" | "rejected";
+
+export interface OrderRow {
+  id: string; key_id: string; market: string; client_order_id: string | null;
+  side: OrderSide; type: OrderType; time_in_force: TimeInForce; post_only: boolean;
+  price: string | null; quantity: string | null; quote_amount: string | null;
+  filled_quantity: string; filled_quote: string; status: OrderStatus;
+  hold_id: string | null; accepted_seq: string | null; reject_reason: string | null;
+  created_at: string; updated_at: string;
+}
+
+export interface TradeRow {
+  id: string; market: string; seq: string; buy_order_id: string; sell_order_id: string;
+  price: string; quantity: string; notional: string; buyer_fee: string; seller_fee: string;
+  transfer_id: string; created_at: string;
+}
+
+export interface PlaceOrderInput {
+  keyId: string; market: string; clientOrderId: string | null;
+  side: OrderSide; type: OrderType; timeInForce: TimeInForce; postOnly: boolean;
+  price: string | null; quantity: string | null; quoteAmount: string | null;
+}
+
+export interface PlaceOrderResult { order: OrderRow; trades: TradeRow[]; event_ids: string[] }
+
+interface PgLikeError { message?: string; detail?: string }
+
+/**
+ * Calls place_order (db/migrations/0013_place_order.sql). Unlike the other wrappers in
+ * this file, this one owns its own transactions rather than accepting an already open
+ * client, because a rejection needs a second, separate transaction: place_order raises
+ * order_rejected rather than returning a rejection object, so the first transaction rolls
+ * back and takes every write it attempted with it. record_rejection then runs in its own
+ * transaction to write the market_events row and the trader's own event for the rejection,
+ * and the original order_rejected error is rethrown unchanged so the caller still sees the
+ * reason as detail, mapped to 422 by src/db/errors.ts.
+ */
+export async function placeOrder(pool: Pool, input: PlaceOrderInput, now: Date = new Date()): Promise<PlaceOrderResult> {
+  const orderId = newId("ord");
+  try {
+    return await withTx(pool, async (c) => {
+      const { rows } = await c.query<{ r: PlaceOrderResult }>(
+        "select place_order($1,$2,$3,$4,$5,$6,$7,$8,$9::bigint,$10::bigint,$11::bigint,$12) as r",
+        [input.keyId, orderId, input.market, input.clientOrderId, input.side, input.type, input.timeInForce,
+          input.postOnly, input.price, input.quantity, input.quoteAmount, now]);
+      return (rows[0] as { r: PlaceOrderResult }).r;
+    });
+  } catch (err) {
+    const e = err as PgLikeError;
+    if (e.message === "order_rejected" && e.detail) {
+      await withTx(pool, (c) => c.query(
+        "select record_rejection($1, $2, $3, $4, $5)",
+        [input.keyId, orderId, input.market, e.detail, now]));
+    }
+    throw err;
+  }
+}
+
+export interface CancelOrderResult { order: OrderRow; event_ids: string[] }
+
+/** Calls cancel_order (db/migrations/0013_place_order.sql). A single transaction suffices
+ * here: cancelling never needs a second write after a rollback the way a rejection does. */
+export async function cancelOrder(c: PoolClient, keyId: string, orderId: string, now: Date = new Date()): Promise<CancelOrderResult> {
+  const { rows } = await c.query<{ r: CancelOrderResult }>(
+    "select cancel_order($1, $2, $3) as r", [keyId, orderId, now]);
+  return (rows[0] as { r: CancelOrderResult }).r;
 }

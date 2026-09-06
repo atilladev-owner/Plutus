@@ -11,6 +11,8 @@ const RAISED: Record<string, { status: number; code: ErrorCode }> = {
   ledger_not_found: { status: 404, code: "not_found" },
   validation_failed: { status: 422, code: "validation_failed" },
   sandbox_limit_reached: { status: 409, code: "sandbox_limit_reached" },
+  order_not_found: { status: 404, code: "not_found" },
+  order_not_open: { status: 409, code: "order_not_open" },
 };
 
 /** Turns an exception raised by our SQL functions into an ApiError. Anything else returns null. */
@@ -23,6 +25,13 @@ export function mapDbError(err: unknown): ApiError | null {
   if (e.message === "faucet_cooldown") {
     const seconds = e.detail && /^[1-9][0-9]*$/.test(e.detail) ? e.detail : "1";
     return new ApiError(429, "faucet_cooldown", "the faucet can be used once every 24 hours", undefined, { "Retry-After": seconds });
+  }
+  // place_order (db/migrations/0013_place_order.sql) raises this with detail set to one of
+  // the eight named reasons in spec 10.3. The reason is exposed verbatim as the error's
+  // detail, rather than folded into a human sentence the way the generic RAISED table
+  // below does, so a caller can match on it exactly.
+  if (e.message === "order_rejected") {
+    return new ApiError(422, "order_rejected", e.detail ?? "order_rejected");
   }
   const hit = RAISED[e.message];
   if (!hit) return null;

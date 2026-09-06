@@ -3,7 +3,7 @@ export type ErrorCode =
   | "insufficient_funds" | "asset_mismatch" | "hold_not_open"
   | "idempotency_key_reused" | "idempotency_in_flight" | "rate_limited"
   | "sandbox_limit_reached" | "rate_limiter_unavailable"
-  | "invalid_signature" | "timestamp_out_of_window" | "order_rejected"
+  | "invalid_signature" | "timestamp_out_of_window" | "order_rejected" | "order_not_open"
   | "unsupported_media_type" | "payload_too_large" | "internal_error"
   | "faucet_cooldown" | "sandbox_only";
 
