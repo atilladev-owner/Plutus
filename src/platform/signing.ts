@@ -41,6 +41,16 @@ function signatureMessage(timestamp: number, method: string, path: string, body:
   return `${timestamp}\n${method.toUpperCase()}\n${path}\n${body}`;
 }
 
+/**
+ * Never a real hash, just 32 zero bytes the same length as one: HMACing this and running
+ * safeEqual against the result on the "no active row" path costs the same as verifying a
+ * real key's signature. Without it, an unknown, revoked or expired key id would answer
+ * faster than a wrong signature against a real key, since neither the HMAC nor the compare
+ * would ever run, and that timing gap would let ids be enumerated even though both cases
+ * already return the identical 401 invalid_signature body.
+ */
+const DUMMY_HMAC_KEY = Buffer.alloc(32);
+
 /** Builds the four signed request headers (spec 10.8). Used by tests and by the owner's
  * docs/place-order.mjs script, so both sign requests exactly the way the server verifies them. */
 export function signRequest(input: SignRequestInput): SignedRequestHeaders {
@@ -90,33 +100,41 @@ export function signedAuth(deps: AppDeps) {
       try {
         // Looked up by id, not by hash: unlike bearerAuth there is no hash to look up by
         // until the signature itself is checked. A missing row and a wrong signature both
-        // fall through to the same invalid_signature 401 below, so an id cannot be probed.
+        // fall through to the same invalid_signature 401 below, so an id cannot be probed
+        // by response body or status; the dummy compare below closes the same gap for
+        // response timing.
         const row = await getKey(client, keyId);
-        if (row && row.revoked_at === null && (row.expires_at === null || row.expires_at > new Date())) {
-          const path = req.originalUrl;
-          const body = req.rawBody ? req.rawBody.toString("utf8") : "";
-          const message = signatureMessage(timestamp, req.method, path, body);
-          let matched = safeEqual(createHmac("sha256", row.secret_hash).update(message, "utf8").digest("hex"), signature);
+        const active = row && row.revoked_at === null && (row.expires_at === null || row.expires_at > new Date()) ? row : null;
+        const path = req.originalUrl;
+        const body = req.rawBody ? req.rawBody.toString("utf8") : "";
+        const message = signatureMessage(timestamp, req.method, path, body);
+        if (active) {
+          let matched = safeEqual(createHmac("sha256", active.secret_hash).update(message, "utf8").digest("hex"), signature);
           let usedOldSecret = false;
           // The current secret failed; a rotation may still leave an old one valid for
           // fifteen more minutes (rotateKey, db/keys.ts). Tried in order, newest first,
           // with safeEqual for every compare, same as the current secret above.
           if (!matched) {
-            const oldHashes = await listActiveOldSecretHashes(client, row.id);
+            const oldHashes = await listActiveOldSecretHashes(client, active.id);
             for (const oldHash of oldHashes) {
               const candidate = createHmac("sha256", oldHash).update(message, "utf8").digest("hex");
               if (safeEqual(candidate, signature)) { matched = true; usedOldSecret = true; break; }
             }
           }
           if (matched) {
-            key = { id: row.id, mode: row.mode, scopes: row.scopes, prefix: row.prefix, last4: row.last4 };
-            await touchKey(client, row.id);
-            const disabled = await disabledEndpoints(client, row.id);
+            key = { id: active.id, mode: active.mode, scopes: active.scopes, prefix: active.prefix, last4: active.last4 };
+            await touchKey(client, active.id);
+            const disabled = await disabledEndpoints(client, active.id);
             const warnings: string[] = [];
             if (usedOldSecret) warnings.push("signed with a rotated secret still inside its grace period");
             if (disabled.length > 0) warnings.push(`disabled webhook endpoints: ${disabled.join(",")}`);
             if (warnings.length > 0) res.setHeader("Plutus-Warning", warnings.join("; "));
           }
+        } else {
+          // No active row for this id: still spend one HMAC and one safeEqual, against a
+          // fixed dummy key that can never match, so this path takes the same time as a
+          // real key's failed comparison above.
+          safeEqual(createHmac("sha256", DUMMY_HMAC_KEY).update(message, "utf8").digest("hex"), signature);
         }
       } finally {
         client.release();
