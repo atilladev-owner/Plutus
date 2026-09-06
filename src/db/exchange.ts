@@ -107,48 +107,73 @@ export interface PlaceOrderResult { order: OrderRow; trades: TradeRow[]; event_i
 
 interface PgLikeError { message?: string; detail?: string }
 
-/**
- * Calls place_order (db/migrations/0013_place_order.sql). Unlike the other wrappers in
- * this file, this one owns its own transactions rather than accepting an already open
- * client, because a rejection needs a second, separate transaction: place_order raises
- * order_rejected rather than returning a rejection object, so the first transaction rolls
- * back and takes every write it attempted with it. record_rejection then runs in its own
- * transaction to write the market_events row and the trader's own event for the rejection,
- * and the original order_rejected error is rethrown unchanged so the caller still sees the
- * reason as detail, mapped to 422 by src/db/errors.ts. Its rejectionEventIds property carries
- * record_rejection's own event ids, since the raised error is what the caller sees, not
- * this function's return value; src/routes/exchange-orders.ts fans those out too.
- *
- * bodyFingerprint (task 5, 0014_order_fingerprint.sql), when not null, is written onto the
- * new order row in the same transaction as the insert: a stable hash of the request body a
- * client_order_id was placed with, so a caller can tell a byte identical replay from a
- * different request reusing the same handle before ever calling this function again.
- */
 export interface RejectedOrderError extends Error { detail?: string; rejectionEventIds?: string[] }
 
+/**
+ * Calls place_order (db/migrations/0013_place_order.sql, patched by
+ * 0015_rejected_orders.sql) against an already open client, taking part in whatever
+ * transaction the caller is managing, the same way cancelOrder does. This is the accept
+ * path only: place_order still raises order_rejected rather than returning a rejection
+ * object on a rejection, which rolls back everything this call and the rest of the
+ * caller's own transaction did. Recording that rejection is the caller's job
+ * (recordOrderRejection below), in a transaction of its own, since whichever transaction
+ * this function ran inside is already rolling back by the time the caller catches it.
+ *
+ * bodyFingerprint (task 5, 0014_order_fingerprint.sql), when not null, is written onto the
+ * new order row in the same transaction as the insert: a stable fingerprint of the request
+ * body a client_order_id was placed with, so a caller can tell a byte identical replay from
+ * a different request reusing the same handle before ever calling this function again.
+ */
+export async function placeOrderWithClient(
+  c: PoolClient, orderId: string, input: PlaceOrderInput, now: Date, bodyFingerprint: string | null,
+): Promise<PlaceOrderResult> {
+  const { rows } = await c.query<{ r: PlaceOrderResult }>(
+    "select place_order($1,$2,$3,$4,$5,$6,$7,$8,$9::bigint,$10::bigint,$11::bigint,$12) as r",
+    [input.keyId, orderId, input.market, input.clientOrderId, input.side, input.type, input.timeInForce,
+      input.postOnly, input.price, input.quantity, input.quoteAmount, now]);
+  const result = (rows[0] as { r: PlaceOrderResult }).r;
+  if (bodyFingerprint !== null) {
+    await c.query("update orders set body_fingerprint = $1 where id = $2", [bodyFingerprint, result.order.id]);
+  }
+  return result;
+}
+
+/**
+ * Calls record_rejection (0015_rejected_orders.sql) in a transaction of its own: an error
+ * reply is never stored against an Idempotency-Key (src/platform/idempotency.ts only stores
+ * a successful handler's return value), so this never needs to share ctx.tx's transaction
+ * the way placeOrderWithClient does. Inserts the rejected order row itself (review round 1,
+ * finding 1: spec 10.3 gives orders a status of "rejected", not only a market_events and
+ * trader event pair) and returns the event ids for the caller to fan out.
+ */
+export async function recordOrderRejection(
+  pool: Pool, input: PlaceOrderInput, orderId: string, reason: string, now: Date,
+): Promise<string[]> {
+  const { rows } = await withTx(pool, (c) => c.query<{ r: { event_ids: string[] } }>(
+    "select record_rejection($1,$2,$3,$4,$5,$6,$7,$8,$9::bigint,$10::bigint,$11::bigint,$12,$13) as r",
+    [input.keyId, orderId, input.market, input.clientOrderId, input.side, input.type, input.timeInForce,
+      input.postOnly, input.price, input.quantity, input.quoteAmount, reason, now]));
+  return (rows[0] as { r: { event_ids: string[] } }).r.event_ids;
+}
+
+/**
+ * Calls place_order against a transaction it owns itself, for a caller (chiefly
+ * tests/integration/matching.test.ts) that has no other transaction to share, catching a
+ * rejection and recording it exactly the way src/routes/exchange-orders.ts does by hand for
+ * the same reason spec 10.4 step 6 needs it: rejectionEventIds carries record_rejection's own
+ * event ids on the thrown error, since the raised error is what the caller sees, not this
+ * function's return value.
+ */
 export async function placeOrder(
   pool: Pool, input: PlaceOrderInput, now: Date = new Date(), bodyFingerprint: string | null = null,
 ): Promise<PlaceOrderResult> {
   const orderId = newId("ord");
   try {
-    return await withTx(pool, async (c) => {
-      const { rows } = await c.query<{ r: PlaceOrderResult }>(
-        "select place_order($1,$2,$3,$4,$5,$6,$7,$8,$9::bigint,$10::bigint,$11::bigint,$12) as r",
-        [input.keyId, orderId, input.market, input.clientOrderId, input.side, input.type, input.timeInForce,
-          input.postOnly, input.price, input.quantity, input.quoteAmount, now]);
-      const result = (rows[0] as { r: PlaceOrderResult }).r;
-      if (bodyFingerprint !== null) {
-        await c.query("update orders set body_fingerprint = $1 where id = $2", [bodyFingerprint, result.order.id]);
-      }
-      return result;
-    });
+    return await withTx(pool, (c) => placeOrderWithClient(c, orderId, input, now, bodyFingerprint));
   } catch (err) {
     const e = err as PgLikeError & { rejectionEventIds?: string[] };
     if (e.message === "order_rejected" && e.detail) {
-      const { rows } = await withTx(pool, (c) => c.query<{ r: { event_ids: string[] } }>(
-        "select record_rejection($1, $2, $3, $4, $5) as r",
-        [input.keyId, orderId, input.market, e.detail, now]));
-      e.rejectionEventIds = (rows[0] as { r: { event_ids: string[] } }).r.event_ids;
+      e.rejectionEventIds = await recordOrderRejection(pool, input, orderId, e.detail, now);
     }
     throw err;
   }
@@ -185,12 +210,19 @@ export async function getOrder(c: PoolClient, keyId: string, orderId: string): P
   return rows[0] ?? null;
 }
 
-/** The idempotency lookup task 5 requires: an order under this key already claiming this
- * client_order_id, if any, with the fingerprint it was placed under alongside it so the
- * caller can decide replay from mismatch before ever calling placeOrder again. */
+/** The idempotency lookup task 5 requires: the live (non rejected) order under this key
+ * already claiming this client_order_id, if any, with the fingerprint it was placed under
+ * alongside it so the caller can decide replay from mismatch before ever calling placeOrder
+ * again. Excludes status = 'rejected' (review round 1, finding 1): the partial unique index
+ * backing client_order_id (0015_rejected_orders.sql) allows more than one rejected row to
+ * share a handle, so without this filter a lookup could resolve to a dead end from a past
+ * failed attempt instead of the live order, or to none at all when both a rejected and a
+ * live row exist. A cancel by client_order_id resolving through this same function answers
+ * not_found for a handle only a rejection ever used, which is the honest answer: nothing
+ * ever went live under it to cancel. */
 export async function findOrderByClientOrderId(c: PoolClient, keyId: string, clientOrderId: string): Promise<(OrderRow & { body_fingerprint: string | null }) | null> {
   const { rows } = await c.query<OrderRow & { body_fingerprint: string | null }>(
-    `select ${ORDER_COLUMNS}, o.body_fingerprint from orders o where o.key_id = $1 and o.client_order_id = $2`,
+    `select ${ORDER_COLUMNS}, o.body_fingerprint from orders o where o.key_id = $1 and o.client_order_id = $2 and o.status <> 'rejected'`,
     [keyId, clientOrderId]);
   return rows[0] ?? null;
 }

@@ -415,15 +415,26 @@ describe("place_order and cancel_order", () => {
     }
   });
 
+  // Review round 1, finding 1: record_rejection (0015_rejected_orders.sql) inserts the
+  // order row itself now, status rejected, with the caller's own client_order_id, price and
+  // quantity; no hold was ever created here (the hold attempt is what raised
+  // insufficient_funds), so hold_id and accepted_seq stay null.
   it("(h) insufficient funds on an unfunded key", async () => {
     const keyD = await sandboxKey();
+    const clientOrderId = newId("evt");
     const reason = await rejectedDetail(placeOrder(testPool(), limitOrder({
-      keyId: keyD, market: "BTC-USDT", side: "buy", price: "8000000000", quantity: "100000", clientOrderId: newId("evt"),
+      keyId: keyD, market: "BTC-USDT", side: "buy", price: "8000000000", quantity: "100000", clientOrderId,
     })));
     expect(reason).toBe("insufficient_funds");
 
-    const { rows } = await testPool().query("select count(*)::int as n from orders where client_order_id is not null and key_id = $1", [keyD]);
-    expect(rows[0]?.n).toBe(0);
+    const { rows } = await testPool().query<{ status: string; reject_reason: string; hold_id: string | null; accepted_seq: string | null; price: string; quantity: string }>(
+      "select status, reject_reason, hold_id, accepted_seq, price::text as price, quantity::text as quantity from orders where client_order_id = $1 and key_id = $2",
+      [clientOrderId, keyD]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      status: "rejected", reject_reason: "insufficient_funds", hold_id: null, accepted_seq: null,
+      price: "8000000000", quantity: "100000",
+    });
   });
 
   // Review round 1, finding 1: self_trade, the ninth named reason. A key's own resting

@@ -191,17 +191,19 @@ describe("exchange orders", () => {
     }
   });
 
-  // 0013_place_order.sql never inserts an orders row for a rejected attempt (see that
-  // file's own header comment): doing so would let a retried client_order_id collide with
-  // its own failed predecessor, exactly the idempotency this task's client_order_id replay
-  // relies on. So a rejection's only record is market_events and the trader's own event
-  // stream, not a status: "rejected" row in GET /v1/exchange/orders. This test asserts that
-  // actual, deliberate behaviour rather than the row the brief's own wording (history with
-  // status rejected) would suggest; see the task report for the full reasoning.
-  it("rejects a structurally invalid order with 422 and the reason, recorded in the trader's own events, never as an orders row", async () => {
+  // Review round 1, finding 1: spec 10.3 gives orders a status of "rejected" and a
+  // reject_reason, so record_rejection (0015_rejected_orders.sql) inserts the order row
+  // itself, with every field the caller sent, not only the market_events row and the
+  // trader's own event. The partial unique index backing client_order_id excludes a
+  // rejected row, and so does place_order's own duplicate check, so a genuine retry of the
+  // same handle after a rejection reaches place_order fresh rather than being refused
+  // against its own failed predecessor.
+  it("rejects a structurally invalid order with 422 and the reason, records it as a rejected order in history, and accepts a retry of the same handle", async () => {
     const { app } = await makeTestApp();
     const k = await mintKey(app);
-    const res = await place(app, k, { market: "BTC-USDT", side: "buy", type: "limit", price: "68500000001", quantity: "100000" });
+    const clientOrderId = "reject-retry-1";
+    const bad = { market: "BTC-USDT", side: "buy", type: "limit", price: "68500000001", quantity: "100000", client_order_id: clientOrderId };
+    const res = await place(app, k, bad);
     expect(res.status).toBe(422);
     expect(res.body.code).toBe("order_rejected");
     expect(res.body.detail).toBe("price_not_tick");
@@ -211,8 +213,53 @@ describe("exchange orders", () => {
     expect(events.body.data).toHaveLength(1);
     expect(events.body.data[0].data.reason).toBe("price_not_tick");
 
-    const list = await listOrders(app, k);
-    expect(list.body.data).toEqual([]);
+    const history = await listOrders(app, k, "?status=rejected");
+    expect(history.status).toBe(200);
+    expect(history.body.data).toHaveLength(1);
+    expect(history.body.data[0]).toMatchObject({
+      status: "rejected", reject_reason: "price_not_tick", client_order_id: clientOrderId,
+      market: "BTC-USDT", side: "buy", type: "limit", price: "68500000001", quantity: "100000",
+      filled_quantity: "0", filled_quote: "0", hold_id: null, accepted_seq: null,
+    });
+
+    const open = await listOrders(app, k, "?status=open");
+    expect(open.body.data).toEqual([]);
+
+    // A retry of the same handle, well formed this time, is accepted, not refused as a
+    // duplicate against its own rejected predecessor.
+    await request(app).post("/v1/exchange/faucet").set(sign(k, "POST", "/v1/exchange/faucet")).send();
+    const good = { market: "BTC-USDT", side: "buy", type: "limit", price: "68500000000", quantity: "100000", client_order_id: clientOrderId };
+    const retry = await place(app, k, good);
+    expect(retry.status).toBe(201);
+    expect(retry.body).toMatchObject({ status: "open", client_order_id: clientOrderId });
+    expect(retry.headers["idempotent-replayed"]).toBeUndefined();
+
+    await cancelAll(app, k);
+  });
+
+  // Review round 1, finding 2: two concurrent placements sharing a client_order_id and an
+  // identical body can both pass the idempotency lookup before either commits. Exactly one
+  // of the two ever creates an order; the other's own duplicate_client_order_id from
+  // place_order is repaired into a replay of the winner rather than surfaced as a 422,
+  // since the loser's retry was honest, it only ever lost a timing race against itself.
+  it("answers a genuine concurrent replay with one 201 and one 200, never two orders", async () => {
+    const { app } = await makeTestApp();
+    const k = await fundedKey(app);
+    const payload = { market: "BTC-USDT", side: "buy", type: "limit", price: "73000000000", quantity: "100000", client_order_id: "race-1" };
+
+    const [a, b] = await Promise.all([place(app, k, payload), place(app, k, payload)]);
+    const statuses = [a.status, b.status].sort((x, y) => x - y);
+    expect(statuses).toEqual([200, 201]);
+    const winner = a.status === 201 ? a : b;
+    const replay = a.status === 201 ? b : a;
+    expect(replay.headers["idempotent-replayed"]).toBe("true");
+    expect(replay.body).toEqual(winner.body);
+
+    const matching = (await listOrders(app, k, "?status=open")).body.data
+      .filter((o: { client_order_id: string | null }) => o.client_order_id === "race-1");
+    expect(matching).toHaveLength(1);
+
+    await cancelAll(app, k);
   });
 
   it("replays the first order for a byte identical body under the same client_order_id, and rejects a different one", async () => {
@@ -225,7 +272,7 @@ describe("exchange orders", () => {
     expect(first.headers["idempotent-replayed"]).toBeUndefined();
 
     const second = await place(app, k, payload);
-    expect(second.status).toBe(201);
+    expect(second.status).toBe(200);
     expect(second.headers["idempotent-replayed"]).toBe("true");
     expect(second.body).toEqual(first.body);
 

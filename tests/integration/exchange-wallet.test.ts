@@ -199,9 +199,15 @@ describe("exchange wallets", () => {
     expect(resetRes.body.code).toBe("sandbox_only");
   });
 
+  // Review round 1, finding 5: lock_markets takes any text and hashes it (hashtext(symbol))
+  // the same way regardless of whether it names a real market, so this proves the same
+  // acquire-hold-release behaviour with two private nonce strings nothing else in a
+  // concurrently running test file could ever also be locking. Locking the real
+  // "BTC-USDT" here, as this test used to, meant its final assertion (nobody else holds the
+  // lock right now) could false fail the instant any other file's own order placement or
+  // cancellation held that exact global, unscoped lock at the same moment.
   it("locks every market in symbol order before touching anything else, so the same order holds for later matching", async () => {
-    const symbols = (await testPool().query<{ symbol: string }>("select symbol from markets order by symbol")).rows.map((r) => r.symbol);
-    expect(symbols).toEqual(["BTC-USDT", "ETH-USDT"]);
+    const symbols = [newId("evt"), newId("evt")].sort();
     const holder = await testPool().connect();
     try {
       await holder.query("begin");
@@ -209,7 +215,7 @@ describe("exchange wallets", () => {
       const contender = await testPool().connect();
       try {
         const { rows } = await contender.query<{ locked: boolean }>(
-          "select not pg_try_advisory_xact_lock(hashtext($1)) as locked", ["BTC-USDT"]);
+          "select not pg_try_advisory_xact_lock(hashtext($1)) as locked", [symbols[0]]);
         expect(rows[0]?.locked).toBe(true);
       } finally {
         contender.release();
@@ -221,7 +227,7 @@ describe("exchange wallets", () => {
     const after = await testPool().connect();
     try {
       const { rows } = await after.query<{ locked: boolean }>(
-        "select pg_try_advisory_xact_lock(hashtext($1)) as locked", ["BTC-USDT"]);
+        "select pg_try_advisory_xact_lock(hashtext($1)) as locked", [symbols[0]]);
       expect(rows[0]?.locked).toBe(true);
       await after.query("select pg_advisory_unlock_all()");
     } finally {
