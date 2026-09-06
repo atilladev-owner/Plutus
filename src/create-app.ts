@@ -9,6 +9,7 @@ import { mountRoutes, type RouteDef, type RouteMiddleware } from "./platform/rou
 import { healthRoutes } from "./routes/health.js";
 import { mountDocs } from "./routes/docs.js";
 import { mountLanding } from "./routes/landing.js";
+import { mountStream } from "./routes/exchange-stream.js";
 
 type HelmetFactory = (options?: helmetModule.HelmetOptions) => RequestHandler;
 
@@ -59,6 +60,9 @@ export function createApp(deps: AppDeps, routes: RouteDef[] = [...healthRoutes],
   });
   app.use(express.static("public"));
   mountRoutes(app, deps, routes, mw);
+  // Streams, so it never goes through mountRoutes' own JSON response handling: mounted
+  // directly, the same way mountDocs and mountLanding are, task 8.
+  mountStream(app, deps);
   mountDocs(app, deps);
   mountLanding(app);
   app.use(notFoundHandler);

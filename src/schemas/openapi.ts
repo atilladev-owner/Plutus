@@ -10,7 +10,7 @@ function pathParams(path: string): string[] {
   return [...path.matchAll(/\{([a-zA-Z_]+)\}/g)].map((m) => m[1] as string);
 }
 
-export function buildOpenApi(routes: RouteDef[], baseUrl: string): Json {
+export function buildOpenApi(routes: RouteDef[], baseUrl: string, extraPaths: Record<string, Record<string, Json>> = {}): Json {
   const paths: Record<string, Record<string, Json>> = {};
   const problem = { description: "Problem details", content: { "application/problem+json": { schema: { $ref: "#/components/schemas/Problem" } } } };
   for (const r of routes) {
@@ -38,6 +38,12 @@ export function buildOpenApi(routes: RouteDef[], baseUrl: string): Json {
     if (r.idempotent) (op.parameters as Json[]).push({ name: "Idempotency-Key", in: "header", required: false, schema: { type: "string", maxLength: 255 } });
     paths[r.path] ??= {};
     paths[r.path]![r.method] = op;
+  }
+  // A route that streams (src/routes/exchange-stream.ts, task 8) carries no defineRoute
+  // entry, so ROUTE_REGISTRY never sees it and the loop above cannot generate one; the
+  // caller (src/routes/docs.ts) hands its hand written path item in here instead.
+  for (const [path, ops] of Object.entries(extraPaths)) {
+    paths[path] = { ...(paths[path] ?? {}), ...ops };
   }
   return {
     openapi: "3.1.0",
