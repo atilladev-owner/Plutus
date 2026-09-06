@@ -64,3 +64,37 @@ export const TradeOut = z.object({
   price: z.string(), quantity: z.string(), notional: z.string(), buyer_fee: z.string(), seller_fee: z.string(),
   transfer_id: z.string(), side: OrderSide, created_at: Iso,
 });
+
+/**
+ * The public market data shapes, spec 10.6. Distinct from the signed, per key shapes
+ * above: a public trade never names the two orders or either fee, only what a public tape
+ * shows for the fill itself; a public book level never names an order, only the price
+ * aggregate spec 10.6 asks for.
+ */
+export const MarketOut = z.object({
+  symbol: z.string(), base: z.string(), quote: z.string(),
+  tick_size: z.string(), lot_size: z.string(), min_notional: z.string(),
+  maker_fee_bps: z.number().int(), taker_fee_bps: z.number().int(),
+  status: z.enum(["open", "halted"]), seq: z.string(),
+  reference_price: z.string().nullable(), house_quoted_at: Iso.nullable(),
+});
+export const MarketsOut = z.object({ data: z.array(MarketOut) });
+
+export const BookLevelOut = z.object({ price: z.string(), quantity: z.string(), orders: z.string() });
+export const BookOut = z.object({ market: z.string(), seq: z.string(), bids: z.array(BookLevelOut), asks: z.array(BookLevelOut) });
+
+export const PublicTradeOut = z.object({
+  id: z.string(), market: z.string(), seq: z.string(),
+  price: z.string(), quantity: z.string(), notional: z.string(), created_at: Iso,
+});
+export const PublicTradesOut = z.object({ data: z.array(PublicTradeOut) });
+
+export const TickerOut = z.object({
+  market: z.string(), seq: z.string(),
+  last: z.string().nullable(), high_24h: z.string().nullable(), low_24h: z.string().nullable(),
+  base_volume_24h: z.string().nullable(), quote_volume_24h: z.string().nullable(),
+});
+
+export const CandleInterval = z.enum(["1m", "5m", "1h"]);
+export const CandleOut = z.object({ t: Iso, open: z.string(), high: z.string(), low: z.string(), close: z.string(), volume: z.string() });
+export const CandlesOut = z.object({ data: z.array(CandleOut) });

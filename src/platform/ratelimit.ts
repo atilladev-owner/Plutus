@@ -5,7 +5,7 @@ import { ApiError } from "../domain/errors.js";
 import type { AppDeps } from "../deps.js";
 import type { RouteDef, AuthedKey } from "./route.js";
 
-export type RateBucket = "mint" | "sandbox" | "live" | "verify" | "weight" | "place";
+export type RateBucket = "mint" | "sandbox" | "live" | "verify" | "verify_public" | "weight" | "place";
 export interface RateResult { ok: boolean; limit: number; remaining: number; resetAt: number }
 export interface RateLimiter { limit(bucket: RateBucket, id: string, points?: number): Promise<RateResult> }
 
@@ -14,8 +14,15 @@ export const RATE_RULES: Record<RateBucket, { points: number; windowSeconds: num
   sandbox: { points: 60, windowSeconds: 60 },
   live: { points: 600, windowSeconds: 60 },
   verify: { points: 10, windowSeconds: 60 },
+  // The public exchange proof, spec 10.6: no key, two calls a minute per IP.
+  verify_public: { points: 2, windowSeconds: 60 },
   // Endpoint weights, spec 10.9: 1,200 weight per minute per key, plus a ten per second
   // cap on order placement that weightLimit (weights.ts) charges on top of the weight.
+  // The public market data reads (spec 10.6, src/routes/exchange-market-data.ts) spend out
+  // of this same bucket and budget, keyed by IP instead of by key (rateLimitMiddleware below
+  // falls back to req.ip whenever a route has no signed caller), since nothing in spec 10.9
+  // gives the public reads a budget of their own and the id namespaces never collide: a key
+  // id always looks like "key_...", never a dotted IP address or "::1".
   weight: { points: 1200, windowSeconds: 60 },
   place: { points: 10, windowSeconds: 1 },
 };
@@ -52,7 +59,7 @@ export class UpstashRateLimiter implements RateLimiter {
     });
     this.limiters = {
       mint: make("mint"), sandbox: make("sandbox"), live: make("live"), verify: make("verify"),
-      weight: make("weight"), place: make("place"),
+      verify_public: make("verify_public"), weight: make("weight"), place: make("place"),
     };
   }
   async limit(bucket: RateBucket, id: string, points = 1): Promise<RateResult> {
@@ -99,7 +106,13 @@ export function rateLimitMiddleware(deps: AppDeps) {
       const key = res.locals.key as AuthedKey | undefined;
       const bucket: RateBucket = mode === "standard" ? (key?.mode === "live" ? "live" : "sandbox") : mode;
       const id = key?.id ?? req.ip ?? "unknown";
-      const result = await limitWithTimeout(deps, bucket, id);
+      // def.weight (spec 10.9) is never set on a plain bearer or key mint route, so this
+      // stays a plain one point charge for every route that already relied on that; the
+      // public market data reads (src/routes/exchange-market-data.ts) are the one caller
+      // that sets it here, spending 5 or 10 points against the IP-keyed "weight" bucket
+      // instead of the flat one point every other rate limited public route spends.
+      const points = typeof def.weight === "function" ? def.weight(req) : (def.weight ?? 1);
+      const result = await limitWithTimeout(deps, bucket, id, points);
       const resetSeconds = applyRateLimitHeaders(res, result);
       if (!result.ok) throw new ApiError(429, "rate_limited", `limit of ${result.limit} per window reached`, undefined, { "Retry-After": String(resetSeconds) });
       next();
