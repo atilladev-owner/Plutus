@@ -59,6 +59,34 @@ async function orderRow(id: string): Promise<OrderRow | null> {
   return rows[0] ?? null;
 }
 
+async function journalHasKind(entityId: string, kind: string): Promise<boolean> {
+  const { rows } = await testPool().query<{ n: string }>(
+    "select count(*)::text as n from journal where ledger_id = $1 and entity_id = $2 and kind = $3",
+    [EXCHANGE_LEDGER_ID, entityId, kind]);
+  return Number(rows[0]?.n ?? "0") > 0;
+}
+
+/** The ledger invariant close_order_hold must never break: an account's held column always
+ * equals the sum of what its still open holds have left, whether a hold just closed as
+ * captured (some of it spent) or as released (none of it was). */
+async function expectHeldMatchesOpenHolds(keyId: string): Promise<void> {
+  const { rows: accounts } = await testPool().query<{ id: string; held: string }>(
+    "select id, held::text as held from accounts where ledger_id = $1 and name = $2 and kind = 'normal'",
+    [EXCHANGE_LEDGER_ID, keyId]);
+  for (const a of accounts) {
+    const { rows: holds } = await testPool().query<{ sum: string }>(
+      "select coalesce(sum(remaining), 0)::text as sum from holds where account_id = $1 and status = 'open'", [a.id]);
+    expect(BigInt(a.held)).toBe(BigInt(holds[0]?.sum ?? "0"));
+  }
+}
+
+async function holdsCountFor(keyId: string): Promise<number> {
+  const { rows } = await testPool().query<{ n: string }>(
+    "select count(*)::text as n from holds where account_id in (select id from accounts where ledger_id = $1 and name = $2)",
+    [EXCHANGE_LEDGER_ID, keyId]);
+  return Number(rows[0]?.n ?? "0");
+}
+
 async function marketEventsGapless(market: string): Promise<boolean> {
   // order by the real bigint column, not the text alias: naming the cast column "seq" too
   // would let Postgres bind the order by to that alias instead and sort lexicographically
@@ -257,9 +285,12 @@ describe("place_order and cancel_order", () => {
 
   // Scenario (f). An IOC sell for 300,000 against the same 200,000 of resting liquidity
   // fills 200,000 (closing the resting buy's hold exactly, as in scenario b) and cancels
-  // the remaining 100,000, releasing the unused 100,000 base units the seller's hold had
-  // reserved for it. notional for 200,000 base units = 16,000,000, fee 16,000 each side.
-  it("(f) IOC fills what it can and cancels the remainder, releasing its hold", async () => {
+  // the remaining 100,000. The seller's hold reserved 300,000 base units and only 200,000
+  // were ever drawn from it, so closing it out is capture_close_hold, not release_hold: it
+  // already paid for something real, so its terminal status is captured, not released, with
+  // the journal recording a hold.captured for it even though 100,000 of it was never spent.
+  // notional for 200,000 base units = 16,000,000, fee 16,000 each side.
+  it("(f) IOC fills what it can and cancels the remainder, closing its hold as captured", async () => {
     const restId = (await currentRestingBuyId())!;
     const restBefore = await orderRow(restId);
 
@@ -277,11 +308,13 @@ describe("place_order and cancel_order", () => {
     expect((await holdOf(restBefore!.hold_id))).toMatchObject({ status: "captured", remaining: "0" });
 
     const sellHold = await holdOf(r.order.hold_id);
-    expect(sellHold).toMatchObject({ status: "released", remaining: "0" });
+    expect(sellHold).toMatchObject({ status: "captured", remaining: "0" });
+    expect(await journalHasKind(r.order.hold_id!, "hold.captured")).toBe(true);
 
     const after = await balancesOf(keyC);
     expect(after.BTC!.balance - before.BTC!.balance).toBe(-200_000n);
     expect(after.BTC!.held).toBe(0n);
+    await expectHeldMatchesOpenHolds(keyC);
   });
 
   // Scenario (g). ETH-USDT: tick 10,000 (0.01 USDT), lot 1,000,000 (0.01 ETH), base
@@ -391,6 +424,136 @@ describe("place_order and cancel_order", () => {
 
     const { rows } = await testPool().query("select count(*)::int as n from orders where client_order_id is not null and key_id = $1", [keyD]);
     expect(rows[0]?.n).toBe(0);
+  });
+
+  // Review round 1, finding 1: self_trade, the ninth named reason. A key's own resting
+  // order is still just an order sitting on the book; without this check the walk would
+  // build a post_transfer leg moving money from that key's own account to itself, and
+  // post_transfer already refuses that outright as validation_failed, the wrong answer for
+  // what is really this order's own problem. Checked unconditionally, for every order type
+  // and every time in force, not only post_only and FOK.
+  it("self_trade rejects a key crossing its own resting order, leaving the book and its holds untouched", async () => {
+    const keyE = await fundedKey();
+    const resting = await placeOrder(testPool(), limitOrder({
+      keyId: keyE, market: "BTC-USDT", side: "sell", price: "9000000000", quantity: "100000",
+    }));
+    const holdsBefore = await holdsCountFor(keyE);
+
+    const reason = await rejectedDetail(placeOrder(testPool(), limitOrder({
+      keyId: keyE, market: "BTC-USDT", side: "buy", price: "9000000000", quantity: "100000", clientOrderId: newId("evt"),
+    })));
+    expect(reason).toBe("self_trade");
+
+    const restingAfter = await orderRow(resting.order.id);
+    expect(restingAfter).toMatchObject({ status: "open", filled_quantity: "0" });
+    expect(await holdsCountFor(keyE)).toBe(holdsBefore);
+
+    await withTx(testPool(), (c) => cancelOrder(c, keyE, resting.order.id));
+  });
+
+  // Review round 1, finding 2 ("Trace B"): a limit buy holds notional plus fee at its own
+  // price, 81,000.00 USDT, but the resting sell it crosses is priced better, 80,000.00
+  // USDT, and every fill happens at the resting price. price 80,000.00 USDT =
+  // 80,000,000,000, quantity 0.001 BTC = 100,000: notional 80,000,000, and since this is
+  // the first and only fill for both fresh orders, fee (10 bps) is a plain
+  // ceil(80,000,000 * 10 / 10000) = 80,000 each side. The buyer's own notional at 81,000.00
+  // USDT is 81,000,000,000 * 100,000 / 10^8 = 81,000,000, taker fee ceil(81,000,000 * 10 /
+  // 10000) = 81,000, hold 81,081,000. Drawn 80,000,000 + 80,000 = 80,080,000, leaving
+  // 1,001,000 on a hold that already paid for something real: closing it is
+  // capture_close_hold, terminal status captured, not release_hold.
+  it("Trace B: a limit buy filling at a better price than its own closes the leftover as captured, not released", async () => {
+    const keyF = await fundedKey();
+    const keyG = await fundedKey();
+    const resting = await placeOrder(testPool(), limitOrder({
+      keyId: keyF, market: "BTC-USDT", side: "sell", price: "80000000000", quantity: "100000",
+    }));
+    const r = await placeOrder(testPool(), limitOrder({
+      keyId: keyG, market: "BTC-USDT", side: "buy", price: "81000000000", quantity: "100000",
+    }));
+
+    expect(r.order).toMatchObject({ status: "filled", filled_quantity: "100000" });
+    expect(r.trades).toHaveLength(1);
+    expect(r.trades[0]).toMatchObject({
+      price: "80000000000", quantity: "100000", notional: "80000000", buyer_fee: "80000", seller_fee: "80000",
+    });
+
+    const buyHold = await holdOf(r.order.hold_id);
+    expect(buyHold).toMatchObject({ status: "captured", remaining: "0", amount: "81081000" });
+    expect(await journalHasKind(r.order.hold_id!, "hold.captured")).toBe(true);
+    await expectHeldMatchesOpenHolds(keyG);
+
+    const sellAfter = await orderRow(resting.order.id);
+    expect(sellAfter?.status).toBe("filled");
+    expect((await holdOf(resting.order.hold_id))).toMatchObject({ status: "captured", remaining: "0" });
+  });
+
+  // Review round 1, finding 3: price 8,012,340,000 (a tick multiple) gives a per lot
+  // notional of 8,012,340, not a multiple of 1,000, so ceil(notional * 10 / 10000) does not
+  // distribute evenly across three equal fills. The naive way, ceil applied to each fill's
+  // own notional in isolation, gives 8,013 three times, summing to 24,039, one more than
+  // the hold's own single ceiling: ceil(24,037,020 * 10 / 10000) = 24,038 for the full
+  // 300,000 quantity (3 lots), reserved as part of a hold of 24,061,058. The fix's
+  // telescoping fee, the increment of the ceiling on the order's cumulative filled quote,
+  // sums to exactly 24,038 regardless of how unevenly it lands on each of the three fills.
+  it("fee rounding across three separate fills sums to exactly the hold's reserved fee, not more", async () => {
+    const keyBuyer = await fundedKey();
+    const seller1 = await fundedKey();
+    const seller2 = await fundedKey();
+    const seller3 = await fundedKey();
+
+    const resting = await placeOrder(testPool(), limitOrder({
+      keyId: keyBuyer, market: "BTC-USDT", side: "buy", price: "8012340000", quantity: "300000",
+    }));
+    expect((await holdOf(resting.order.hold_id)).amount).toBe("24061058");
+
+    for (const seller of [seller1, seller2, seller3]) {
+      await placeOrder(testPool(), limitOrder({
+        keyId: seller, market: "BTC-USDT", side: "sell", price: "8012340000", quantity: "100000",
+      }));
+    }
+
+    const { rows } = await testPool().query<{ buyer_fee: string }>(
+      "select buyer_fee::text as buyer_fee from trades where buy_order_id = $1 order by seq", [resting.order.id]);
+    expect(rows).toHaveLength(3);
+    const fees = rows.map((row) => BigInt(row.buyer_fee));
+    expect(fees.reduce((a, b) => a + b, 0n)).toBe(24_038n);
+    // The naive per fill ceil would give 8,013 every time (24,039 total); at least one of
+    // the three telescoping fees must differ from that constant for the sum to land on
+    // 24,038 instead.
+    expect(fees.some((f) => f !== 8_013n)).toBe(true);
+
+    const restAfter = await orderRow(resting.order.id);
+    expect(restAfter).toMatchObject({ status: "filled", filled_quantity: "300000", filled_quote: "24037020" });
+    expect((await holdOf(resting.order.hold_id))).toMatchObject({ status: "captured", remaining: "0" });
+  });
+
+  // Review round 1, finding 4 (minor): the application level duplicate check and the
+  // orders_client_order_idx unique index can disagree only across a race two different
+  // markets' advisory locks do not serialise against each other: two place_order calls for
+  // the same key and client_order_id on two different markets can both pass the exists
+  // check before either commits, and whichever commits second hits the raw index instead.
+  // Inserting a second orders row by hand reproduces that exact Postgres error without
+  // needing real concurrency.
+  it("maps a raw duplicate client_order_id constraint violation to order_rejected", async () => {
+    const keyH = await fundedKey();
+    const clientOrderId = "race-" + newId("evt");
+    const first = await placeOrder(testPool(), limitOrder({
+      keyId: keyH, market: "BTC-USDT", side: "buy", price: "7500000000", quantity: "100000", clientOrderId,
+    }));
+    try {
+      const err = await testPool().query(
+        `insert into orders (id, key_id, market, client_order_id, side, type, time_in_force, post_only,
+           price, quantity, quote_amount, filled_quantity, filled_quote, status, hold_id, accepted_seq,
+           reject_reason, created_at, updated_at)
+         values ($1, $2, 'ETH-USDT', $3, 'buy', 'limit', 'GTC', false, 100000000, 1000000, null, 0, 0,
+           'open', null, null, null, now(), now())`,
+        [newId("ord"), keyH, clientOrderId],
+      ).catch((e: unknown) => e);
+      expect(mapDbError(err)?.code).toBe("order_rejected");
+      expect(mapDbError(err)?.message).toBe("duplicate_client_order_id");
+    } finally {
+      await withTx(testPool(), (c) => cancelOrder(c, keyH, first.order.id));
+    }
   });
 
   it("cancels a resting order, releasing its hold, and is idempotent on a second cancel", async () => {

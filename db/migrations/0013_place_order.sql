@@ -95,20 +95,30 @@ end $$;
 -- Closes out whatever remains on an order's hold once the order leaves the book, whether
 -- filled, cancelled, or a rejected FOK/post_only walk that never got this far. A fill that
 -- draws a hold's remaining down to exactly zero already closes it as captured inside
--- post_transfer; this only ever has real work to do when a buyer's hold reserved more than
--- it ended up paying, most commonly a taker limit buy that filled at a resting price better
--- than its own limit. No-op, returning no event ids, when the hold already closed itself.
+-- post_transfer; this only ever has real work to do when a hold reserved more than it ended
+-- up paying, most commonly a taker limit buy that filled at a resting price better than its
+-- own limit, or an IOC/market order whose remainder never matched. Which primitive closes it
+-- depends on whether anything was ever drawn: a hold with remaining below its original
+-- amount already paid for something real, so it closes as captured (capture_close_hold,
+-- 0008_capture_close_hold.sql), honestly reflecting that in both its terminal status and the
+-- journal kind; a hold nothing was ever drawn from (remaining still equals amount) closes as
+-- released, since nothing was ever captured against it. No-op, returning no event ids, when
+-- the hold already closed itself.
 create or replace function close_order_hold(p_ledger_id text, p_hold_id text, p_now timestamptz) returns text[]
 language plpgsql as $$
 declare
-  v_status text;
+  v_hold holds%rowtype;
   r jsonb;
 begin
-  select status into v_status from holds where id = p_hold_id and ledger_id = p_ledger_id;
-  if v_status is distinct from 'open' then
+  select * into v_hold from holds where id = p_hold_id and ledger_id = p_ledger_id;
+  if v_hold.status is distinct from 'open' then
     return '{}';
   end if;
-  r := release_hold(p_ledger_id, p_hold_id, 'hold.released', p_now);
+  if v_hold.remaining < v_hold.amount then
+    r := capture_close_hold(p_ledger_id, p_hold_id, p_now);
+  else
+    r := release_hold(p_ledger_id, p_hold_id, 'hold.released', p_now);
+  end if;
   return array(select jsonb_array_elements_text(r -> 'event_ids'));
 end $$;
 
@@ -178,8 +188,9 @@ begin
   end if;
   select exponent into v_base_exp from assets where code = v_market.base;
   v_divisor := ('1' || repeat('0', v_base_exp))::bigint;
+  v_opp_side := case when p_side = 'buy' then 'sell' else 'buy' end;
 
-  -- Structural completeness. None of these are among the eight order_rejected reasons:
+  -- Structural completeness. None of these are among the nine order_rejected reasons:
   -- they describe a malformed request, which the caller is expected to prevent before it
   -- ever reaches this function.
   if p_side not in ('buy', 'sell') then
@@ -210,7 +221,7 @@ begin
     end if;
   end if;
 
-  -- The eight order_rejected reasons, spec 10.3, checked in the order that lets each test
+  -- The nine order_rejected reasons, spec 10.3, checked in the order that lets each test
   -- scenario isolate exactly one of them: duplicate handle, market state, the order's own
   -- shape against the market's tick, lot and floor, then whether it could even trade.
   if v_reason is null and p_client_order_id is not null
@@ -240,12 +251,29 @@ begin
     v_reason := 'below_min_notional';
   end if;
 
+  -- self_trade: a resting order is always someone's own liquidity, and a key is never
+  -- allowed to take its own. Checked the same way as post_only, an existence query over the
+  -- crossable resting orders restricted to this key, and unconditionally (unlike post_only
+  -- and FOK below, this applies to every order type and every time in force, including a
+  -- market order and a plain GTC limit order that would otherwise just cross and fill):
+  -- without it, the walk would build a post_transfer leg moving money from an account to
+  -- itself, which post_transfer already refuses outright as validation_failed, a confusing
+  -- answer for what is really this order's own problem, not a ledger one.
+  if v_reason is null then
+    if exists (
+      select 1 from orders where market = p_market and side = v_opp_side and status in ('open', 'partially_filled')
+        and key_id = p_key_id
+        and (p_type = 'market' or (case when p_side = 'buy' then price <= p_price else price >= p_price end))
+    ) then
+      v_reason := 'self_trade';
+    end if;
+  end if;
+
   -- post_only and FOK only ever apply to limit orders (market orders are always IOC,
   -- validated above). Both are answered by aggregates over the crossable resting orders,
   -- not by a literal walk: price time order decides who gets matched, never whether the
   -- requested amount can be matched at all.
   if v_reason is null and p_type = 'limit' and (p_post_only or p_tif = 'FOK') then
-    v_opp_side := case when p_side = 'buy' then 'sell' else 'buy' end;
     select exists (
       select 1 from orders where market = p_market and side = v_opp_side and status in ('open', 'partially_filled')
         and (case when p_side = 'buy' then price <= p_price else price >= p_price end)
@@ -321,8 +349,8 @@ begin
   -- The walk, spec 10.4 step 4. accepted_seq, not created_at, is the tie breaker: it is a
   -- gapless per market sequence assigned under this same market's exclusive advisory lock,
   -- so it can never tie between two orders the way a caller supplied or even server
-  -- assigned timestamp could if two orders happen to share one.
-  v_opp_side := case when p_side = 'buy' then 'sell' else 'buy' end;
+  -- assigned timestamp could if two orders happen to share one. v_opp_side was already set
+  -- above, before the self_trade and post_only/FOK checks, and is unchanged since.
   v_market_buy := (p_type = 'market' and p_side = 'buy');
   v_remaining := p_quantity;
   v_remaining_quote := p_quote_amount;
@@ -368,18 +396,37 @@ begin
     -- matches is always the maker. That holds for every fill in every call, regardless of
     -- which side is buying, because the resting orders here were always accepted onto the
     -- book by an earlier, separate call.
+    --
+    -- Each side's fee is the increment of the ceiling on that order's own cumulative filled
+    -- notional, not ceil applied to this one fill's notional in isolation: fee_i =
+    -- ceil((filled_quote_before + notional_i) * bps / 10000) - ceil(filled_quote_before *
+    -- bps / 10000). Summed over every fill an order ever receives, this telescopes to
+    -- exactly ceil(total_filled_notional * bps / 10000): the single ceiling a fully filled
+    -- order's hold reserved, never one cent more, regardless of how many separate fills, at
+    -- how many different price levels, or across how many separate place_order calls, added
+    -- up to it. Charging ceil(notional_i * bps / 10000) on each fill instead, the simpler
+    -- and wrong way, can round up on every single fill and sum to more than the hold holds,
+    -- failing the last fill of an otherwise fully fillable order with a spurious
+    -- insufficient_funds. v_order.filled_quote is this call's incoming order's own running
+    -- total as of before this fill; v_resting.filled_quote is the resting order's own total
+    -- as of when the walk read it, correct whether this is that resting order's first fill
+    -- ever or its fifth, across however many earlier, separate calls.
     if p_side = 'buy' then
       v_buyer_key := p_key_id; v_seller_key := v_resting.key_id;
       v_buyer_hold := v_hold_id; v_seller_hold := v_resting.hold_id;
       v_buy_order_id := p_order_id; v_sell_order_id := v_resting.id;
-      v_buyer_fee := exchange_fee(v_fill_notional, v_market.taker_fee_bps);
-      v_seller_fee := exchange_fee(v_fill_notional, v_market.maker_fee_bps);
+      v_buyer_fee := exchange_fee(v_order.filled_quote + v_fill_notional, v_market.taker_fee_bps)
+        - exchange_fee(v_order.filled_quote, v_market.taker_fee_bps);
+      v_seller_fee := exchange_fee(v_resting.filled_quote + v_fill_notional, v_market.maker_fee_bps)
+        - exchange_fee(v_resting.filled_quote, v_market.maker_fee_bps);
     else
       v_seller_key := p_key_id; v_buyer_key := v_resting.key_id;
       v_seller_hold := v_hold_id; v_buyer_hold := v_resting.hold_id;
       v_sell_order_id := p_order_id; v_buy_order_id := v_resting.id;
-      v_seller_fee := exchange_fee(v_fill_notional, v_market.taker_fee_bps);
-      v_buyer_fee := exchange_fee(v_fill_notional, v_market.maker_fee_bps);
+      v_seller_fee := exchange_fee(v_order.filled_quote + v_fill_notional, v_market.taker_fee_bps)
+        - exchange_fee(v_order.filled_quote, v_market.taker_fee_bps);
+      v_buyer_fee := exchange_fee(v_resting.filled_quote + v_fill_notional, v_market.maker_fee_bps)
+        - exchange_fee(v_resting.filled_quote, v_market.maker_fee_bps);
     end if;
 
     v_buyer_account := ensure_exchange_account(v_buyer_key, v_market.base, p_now);

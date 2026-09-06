@@ -371,7 +371,7 @@ A price is quote minor units per one whole unit of base. Notional is `price * qu
 | BTC-USDT | 10,000 (0.01 USDT) | 100,000 (0.001 BTC) | 5,000,000 (5 USDT) |
 | ETH-USDT | 10,000 (0.01 USDT) | 1,000,000 (0.01 ETH) | 5,000,000 (5 USDT) |
 
-Fees are charged in the quote asset on both sides: the buyer pays notional plus fee, the seller receives notional minus fee. A fee is `ceil(notional * bps / 10000)`. Fees are transferred to the house fee account in the same transfer as the fill.
+Fees are charged in the quote asset on both sides: the buyer pays notional plus fee, the seller receives notional minus fee. A fee is `ceil(notional * bps / 10000)`, charged on the order's cumulative filled notional rather than on each fill in isolation, so per fill rounding across a partially filled order never sums to more than the fee its hold reserved. Fees are transferred to the house fee account in the same transfer as the fill.
 
 ### 10.2 Wallets
 
@@ -404,7 +404,7 @@ The house is a key created by migration with accounts funded from the world: 10,
 
 Margin: a limit buy holds `notional + fee` in quote. A limit sell holds `quantity` in base. A market buy holds `quote_amount`. A market sell holds `quantity`. Fills draw from the hold with `from_hold` legs. When an order leaves the book, whatever remains on its hold is released.
 
-Rejections, all with `order_rejected` and a named reason: `market_halted`, `price_not_tick`, `quantity_not_lot`, `below_min_notional`, `insufficient_funds`, `post_only_would_take`, `fok_not_fillable`, `duplicate_client_order_id`.
+Rejections, all with `order_rejected` and a named reason: `market_halted`, `price_not_tick`, `quantity_not_lot`, `below_min_notional`, `insufficient_funds`, `post_only_would_take`, `fok_not_fillable`, `duplicate_client_order_id`, `self_trade`.
 
 ### 10.4 Matching
 

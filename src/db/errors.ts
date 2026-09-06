@@ -1,6 +1,6 @@
 import { ApiError, type ErrorCode } from "../domain/errors.js";
 
-interface PgLikeError { message?: string; detail?: string; code?: string }
+interface PgLikeError { message?: string; detail?: string; code?: string; constraint?: string }
 
 const RAISED: Record<string, { status: number; code: ErrorCode }> = {
   insufficient_funds: { status: 409, code: "insufficient_funds" },
@@ -27,11 +27,20 @@ export function mapDbError(err: unknown): ApiError | null {
     return new ApiError(429, "faucet_cooldown", "the faucet can be used once every 24 hours", undefined, { "Retry-After": seconds });
   }
   // place_order (db/migrations/0013_place_order.sql) raises this with detail set to one of
-  // the eight named reasons in spec 10.3. The reason is exposed verbatim as the error's
+  // the nine named reasons in spec 10.3. The reason is exposed verbatim as the error's
   // detail, rather than folded into a human sentence the way the generic RAISED table
   // below does, so a caller can match on it exactly.
   if (e.message === "order_rejected") {
     return new ApiError(422, "order_rejected", e.detail ?? "order_rejected");
+  }
+  // place_order checks for a duplicate client_order_id before inserting, but two orders for
+  // the same key and the same client_order_id on two different markets take two different
+  // markets' advisory locks and can race each other right through that check; whichever one
+  // commits second hits orders_client_order_idx (0011_exchange.sql) instead, as a raw
+  // Postgres unique violation rather than our own raised order_rejected. Mapped here so the
+  // cross market race answers exactly the same way the single market case already does.
+  if (e.code === "23505" && e.constraint === "orders_client_order_idx") {
+    return new ApiError(422, "order_rejected", "duplicate_client_order_id");
   }
   const hit = RAISED[e.message];
   if (!hit) return null;
