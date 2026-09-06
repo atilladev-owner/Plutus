@@ -6,7 +6,7 @@ A ledger you can audit and an exchange you can trade against.
 
 ## What it is
 
-Plutus is a multi asset ledger, and from milestone two a paper trading exchange, exposed as a single HTTP API. Every account is double entry, every transfer runs as one Postgres function under row locks, and every write appends to a hash chained journal anyone can verify. Idempotency keys make a retried write safe, and webhook deliveries are signed and retried on a fixed schedule. The whole surface is asserted by a test suite of 127 tests across 33 files, run against a real Postgres, not a mock.
+Plutus is a multi asset ledger, and from milestone two a paper trading exchange, exposed as a single HTTP API. Every account is double entry, every transfer runs as one Postgres function under row locks, and every write appends to a hash chained journal anyone can verify. Idempotency keys make a retried write safe, and webhook deliveries are signed and retried on a fixed schedule. The whole surface is asserted by a test suite of 132 tests across 34 files, run against a real Postgres, not a mock.
 
 ## Thirty seconds
 
