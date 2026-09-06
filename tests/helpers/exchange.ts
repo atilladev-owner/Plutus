@@ -49,3 +49,47 @@ export async function verifyExchangeLedger(): Promise<VerifyReport> {
     client.release();
   }
 }
+
+/**
+ * Starts an exchange test file with clean books. The exchange test files
+ * (matching, exchange orders, house, market data, exchange wallet, sweep, stream) all
+ * trade the same two markets, BTC-USDT and ETH-USDT, in the one shared ldg_exchange this
+ * database holds, and run one after another against it. An order a previous file left
+ * resting, or a house ladder that same file quoted, changes what the next file's own
+ * orders fill against, so every exchange test file calls this once in a beforeAll,
+ * before any of its own scenarios run.
+ *
+ * Every order anywhere in ldg_exchange still open or partially filled is cancelled
+ * through cancel_order (db/migrations/0013_place_order.sql), the same function a
+ * trader's own cancel call runs: its hold is released or captured, its market_events row
+ * is written, and the ledger stays exactly as consistent as it would after any ordinary
+ * cancellation. Every market's house_quoted_at and reference_price are then cleared, so
+ * the next file's first house ladder read or placement quotes fresh rather than skipping
+ * inside the fifteen second staleness window, or quoting around a fake reference an
+ * earlier file's own scenario left behind.
+ *
+ * Nothing is ever deleted. Orders, trades, holds and journal rows from earlier files all
+ * stay exactly where they are, still readable by anything that lists them; only their
+ * effect on the live book and the house's own staleness clock is cleared. One
+ * transaction for the whole call, so this either leaves every open order cancelled and
+ * every market's ladder clock cleared, or, on any failure, leaves the database exactly
+ * as it found it.
+ */
+export async function resetExchangeBooks(): Promise<void> {
+  const client = await testPool().connect();
+  try {
+    await client.query("begin");
+    const { rows } = await client.query<{ key_id: string; id: string }>(
+      "select key_id, id from orders where status in ('open', 'partially_filled') order by created_at, id");
+    for (const row of rows) {
+      await client.query("select cancel_order($1, $2, now())", [row.key_id, row.id]);
+    }
+    await client.query("update markets set house_quoted_at = null, reference_price = null");
+    await client.query("commit");
+  } catch (err) {
+    await client.query("rollback").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}

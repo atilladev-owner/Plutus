@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import request from "supertest";
 import { makeTestApp } from "../helpers/app.js";
 import { mintKey, bearer } from "../helpers/keys.js";
@@ -8,8 +8,16 @@ import { newId } from "../../src/domain/ids.js";
 import * as L from "../../src/db/ledger.js";
 import { EXCHANGE_LEDGER_ID } from "../../src/db/exchange.js";
 import { refreshColdMarkets, topUpHouse } from "../../src/routes/internal.js";
+import { resetExchangeBooks } from "../helpers/exchange.js";
 
 describe("the sweep", () => {
+  // Cross file contamination: matching.test.ts, exchange-orders.test.ts, house.test.ts,
+  // market-data.test.ts and exchange-wallet.test.ts all trade the same shared BTC-USDT
+  // and ETH-USDT books this file's own house ladder and top up scenario touches.
+  beforeAll(async () => {
+    await resetExchangeBooks();
+  });
+
   it("refuses without the secret and reports what it did with it", async () => {
     const { app, deps } = await makeTestApp();
     expect((await request(app).get("/internal/sweep")).status).toBe(401);

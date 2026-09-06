@@ -1,9 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { createHash, randomBytes } from "node:crypto";
 import request from "supertest";
 import type { Pool } from "pg";
 import { testPool } from "../helpers/db.js";
 import { makeTestApp } from "../helpers/app.js";
+import { resetExchangeBooks } from "../helpers/exchange.js";
 import { withTx } from "../../src/db/pool.js";
 import { newId } from "../../src/domain/ids.js";
 import * as M from "../../src/db/market-data.js";
@@ -105,6 +106,15 @@ function countingPool(real: Pool): { pool: Pool; count: () => number } {
 }
 
 describe("public market data", () => {
+  // Cross file contamination: matching.test.ts, exchange-orders.test.ts, house.test.ts,
+  // exchange-wallet.test.ts and sweep.test.ts all trade the same shared BTC-USDT and
+  // ETH-USDT books this file reads. A house ladder or a fake reference_price left behind
+  // by an earlier file would answer a book, ticker or candle read with prices this file
+  // never inserted itself.
+  beforeAll(async () => {
+    await resetExchangeBooks();
+  });
+
   it("aggregates the book by price and reports the market's current seq", async () => {
     const { app } = await makeTestApp();
     const buyer = await sandboxKey();

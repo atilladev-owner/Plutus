@@ -4,6 +4,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { testPool } from "../helpers/db.js";
 import { makeTestApp } from "../helpers/app.js";
+import { resetExchangeBooks } from "../helpers/exchange.js";
 import { withTx } from "../../src/db/pool.js";
 import { newId } from "../../src/domain/ids.js";
 import { placeOrder, cancelOrder, exchangeFaucet, type PlaceOrderInput } from "../../src/db/exchange.js";
@@ -139,6 +140,7 @@ describe("GET /v1/exchange/stream", () => {
   const openReqs: http.ClientRequest[] = [];
 
   beforeAll(async () => {
+    await resetExchangeBooks();
     const { app } = await makeTestApp();
     server = app.listen(0);
     port = (server.address() as AddressInfo).port;

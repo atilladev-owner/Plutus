@@ -47,6 +47,17 @@ async function testFetchDisabled(): Promise<Response> {
  * was fetching, and only then calls refresh_house_ladder. A market this call does not
  * recognise (an unknown symbol reaching it from a read endpoint's path segment) is treated
  * as never stale rather than an error: there is nothing to quote.
+ *
+ * A failure inside refresh_house_ladder, whether a raw database error or an order_rejected
+ * raised by the house's own ladder placement (an ordinary book, min notional or balance
+ * check can reject the house exactly the way it would reject anyone else), aborts that
+ * whole transaction, so house_quoted_at is never stamped by the failed attempt itself. Left
+ * unhandled, that error would propagate out of ensureFreshLadder into whichever public read
+ * or order placement called it, turning a house side quoting problem into a caller facing
+ * 422 or 500. Caught here instead, logged with the market and the reason, and stamped in a
+ * second, separate transaction so the next call within the fifteen second window does not
+ * retry the same failing fetch and placement: the read or placement this call is guarding
+ * then proceeds against whatever book already exists, house quoted or not.
  */
 export async function ensureFreshLadder(
   deps: AppDeps, market: string, fetchImpl?: typeof fetch,
@@ -63,10 +74,18 @@ export async function ensureFreshLadder(
   const reference = await fetchReferencePrice(market, deps, impl);
   const now = new Date();
 
-  await withTx(deps.pool, async (c) => {
-    await X.lockMarkets(c, [market]);
-    const row = await X.getMarket(c, market);
-    if (!row || isFresh(row.house_quoted_at, now.getTime())) return;
-    await c.query("select refresh_house_ladder($1, $2::bigint, $3)", [market, reference, now]);
-  });
+  try {
+    await withTx(deps.pool, async (c) => {
+      await X.lockMarkets(c, [market]);
+      const row = await X.getMarket(c, market);
+      if (!row || isFresh(row.house_quoted_at, now.getTime())) return;
+      await c.query("select refresh_house_ladder($1, $2::bigint, $3)", [market, reference, now]);
+    });
+  } catch (err) {
+    deps.logger.warn({ err: (err as Error).message, market }, "house ladder refresh failed; leaving the existing book in place");
+    await withTx(deps.pool, async (c) => {
+      await X.lockMarkets(c, [market]);
+      await c.query("update markets set house_quoted_at = $2 where symbol = $1", [market, now]);
+    });
+  }
 }

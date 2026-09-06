@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { Express } from "express";
 import request from "supertest";
@@ -7,7 +7,7 @@ import { mintKey, bearer } from "../helpers/keys.js";
 import { signRequest } from "../../src/platform/signing.js";
 import { MemoryScheduler } from "../../src/platform/scheduler.js";
 import { deliverOnce } from "../../src/platform/deliver.js";
-import { verifyExchangeLedger } from "../helpers/exchange.js";
+import { resetExchangeBooks, verifyExchangeLedger } from "../helpers/exchange.js";
 
 // The orders HTTP surface, spec 10.10, over the matching engine task 4 already proved at
 // the database layer (tests/integration/matching.test.ts): place, cancel by id or
@@ -77,6 +77,14 @@ function receiver(): Promise<{ url: string; got: Received[]; close: () => void }
 }
 
 describe("exchange orders", () => {
+  // Cross file contamination: matching.test.ts, house.test.ts, market-data.test.ts,
+  // exchange-wallet.test.ts and sweep.test.ts all trade the same shared BTC-USDT and
+  // ETH-USDT books this file does, so an order left resting or a house ladder left quoted
+  // by an earlier file would change what this file's own orders fill against.
+  beforeAll(async () => {
+    await resetExchangeBooks();
+  });
+
   // Review finding: this file never checked verify's own global invariants the way every
   // other exchange test file does (tests/integration/matching.test.ts,
   // exchange-wallet.test.ts, exchange-schema.test.ts), despite placing, filling and

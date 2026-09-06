@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import request from "supertest";
 import { makeTestApp } from "../helpers/app.js";
 import { mintKey } from "../helpers/keys.js";
@@ -9,7 +9,7 @@ import { signRequest } from "../../src/platform/signing.js";
 import { generateSecret } from "../../src/platform/auth.js";
 import { insertKey } from "../../src/db/keys.js";
 import * as L from "../../src/db/ledger.js";
-import { verifyExchangeLedger } from "../helpers/exchange.js";
+import { resetExchangeBooks, verifyExchangeLedger } from "../helpers/exchange.js";
 import { EXCHANGE_LEDGER_ID } from "../../src/db/exchange.js";
 
 // 100,000 USDT (exponent 6), 1 BTC and 10 ETH (exponent 8 each) in minor units, spec 10.2.
@@ -51,6 +51,13 @@ async function accountsOf(keyId: string): Promise<ExchangeAccount[]> {
 }
 
 describe("exchange wallets", () => {
+  // Cross file contamination: matching.test.ts, exchange-orders.test.ts, house.test.ts,
+  // market-data.test.ts and sweep.test.ts all trade the same shared BTC-USDT and
+  // ETH-USDT books this file's own reset and faucet scenarios touch.
+  beforeAll(async () => {
+    await resetExchangeBooks();
+  });
+
   it("lists no balances before the first faucet call", async () => {
     const { app } = await makeTestApp();
     const k = await mintKey(app);

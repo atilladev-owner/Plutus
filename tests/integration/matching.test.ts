@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { createHash, randomBytes } from "node:crypto";
 import { testPool } from "../helpers/db.js";
-import { verifyExchangeLedger } from "../helpers/exchange.js";
+import { resetExchangeBooks, verifyExchangeLedger } from "../helpers/exchange.js";
 import { withTx } from "../../src/db/pool.js";
 import { newId } from "../../src/domain/ids.js";
 import { mapDbError } from "../../src/db/errors.js";
@@ -122,6 +122,7 @@ describe("place_order and cancel_order", () => {
   let keyC: string;
 
   beforeAll(async () => {
+    await resetExchangeBooks();
     keyA = await fundedKey();
     keyB = await fundedKey();
     keyC = await fundedKey();

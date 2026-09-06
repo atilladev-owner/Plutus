@@ -1,8 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createHash, randomBytes } from "node:crypto";
+import request from "supertest";
 import { testPool } from "../helpers/db.js";
 import { makeTestApp } from "../helpers/app.js";
-import { verifyExchangeLedger } from "../helpers/exchange.js";
+import { resetExchangeBooks, verifyExchangeLedger } from "../helpers/exchange.js";
 import { withTx } from "../../src/db/pool.js";
 import { newId } from "../../src/domain/ids.js";
 import { ensureFreshLadder } from "../../src/routes/exchange-house.js";
@@ -112,6 +113,22 @@ function expectedLadder(referenceMinor: bigint, baseSize: bigint = HOUSE_ETH_BAS
 }
 
 describe("the house ladder", () => {
+  // Cross file contamination: matching.test.ts, exchange-orders.test.ts,
+  // market-data.test.ts, exchange-wallet.test.ts and sweep.test.ts all trade the same
+  // shared BTC-USDT and ETH-USDT books this file quotes against. beforeAll starts this
+  // file with clean books the same way every other exchange test file does; afterAll
+  // clears the ladder and fake reference price this file itself leaves behind (a real
+  // house ladder resting, and a reference_price such as 80,000 USDT on ETH-USDT with an
+  // old house_quoted_at) so the next file to run sees an unquoted house rather than this
+  // one's own scenario.
+  beforeAll(async () => {
+    await resetExchangeBooks();
+  });
+
+  afterAll(async () => {
+    await resetExchangeBooks();
+  });
+
   it("quotes five bids and five asks at the spec prices, does not refetch inside fifteen seconds, and refetches once stale again", async () => {
     const counter = { n: 0 };
 
@@ -238,5 +255,33 @@ describe("the house ladder", () => {
     await ensureFreshLadder(deps, "BTC-USDT", fakeFetch("80000", counter, "BTC"));
     expect(counter.n).toBe(1);
     expect(await houseOrders("BTC-USDT")).toEqual(expectedLadder(80_000_000_000n, HOUSE_BTC_BASE_SIZE));
+  });
+
+  // A failure inside refresh_house_ladder itself, not only a failed fetch, must never
+  // reach a caller. A reference this far under ETH-USDT's own real range rejects the
+  // house's own level 0 bid as below_min_notional (spec 10.1's own floor is 5,000,000
+  // minor USDT units): at 1 USDT the bid rounds to 990,000 quote minor units for a full
+  // one ETH lot, comfortably under that floor, so refresh_house_ladder's own place_order
+  // call raises order_rejected before house_quoted_at is ever stamped by the attempt
+  // itself. resetExchangeBooks starts this scenario from an empty ETH-USDT book, so the
+  // rejection's own rollback (it undoes the ladder cancel refresh_house_ladder ran before
+  // placing anything new, along with everything after it) has nothing earlier to restore
+  // either.
+  it("stamps house_quoted_at and still answers a public book read when the house's own ladder placement is rejected", async () => {
+    await resetExchangeBooks();
+    await forceHouseQuotedAt(MARKET, null);
+    const counter = { n: 0 };
+    const { app, deps } = await makeTestApp();
+
+    await ensureFreshLadder(deps, MARKET, fakeFetch("1", counter));
+    expect(counter.n).toBe(1);
+    expect(await houseOrders(MARKET)).toEqual([]);
+
+    const { rows } = await testPool().query<{ house_quoted_at: string | null }>(
+      "select house_quoted_at from markets where symbol = $1", [MARKET]);
+    expect(rows[0]?.house_quoted_at).not.toBeNull();
+
+    const res = await request(app).get(`/v1/exchange/markets/${MARKET}/book`);
+    expect(res.status).toBe(200);
   });
 });
