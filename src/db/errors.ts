@@ -17,6 +17,13 @@ const RAISED: Record<string, { status: number; code: ErrorCode }> = {
 export function mapDbError(err: unknown): ApiError | null {
   const e = err as PgLikeError;
   if (typeof e?.message !== "string") return null;
+  // exchange_faucet (db/migrations/0012_exchange_wallet.sql) raises this with the whole
+  // seconds still remaining in its detail, so the Retry-After header and the RAISED table's
+  // plain status/code mapping cannot share one branch the way every other raised code does.
+  if (e.message === "faucet_cooldown") {
+    const seconds = e.detail && /^[1-9][0-9]*$/.test(e.detail) ? e.detail : "1";
+    return new ApiError(429, "faucet_cooldown", "the faucet can be used once every 24 hours", undefined, { "Retry-After": seconds });
+  }
   const hit = RAISED[e.message];
   if (!hit) return null;
   const detail = e.detail ? `${e.message.replaceAll("_", " ")}: ${e.detail}` : e.message.replaceAll("_", " ");
