@@ -15,7 +15,10 @@
   --accent-deep: #145238;
   --accent-wash: #E4EFE8;
   --data-1: #C9D2CB;
-  --data-2: #9FAEA3;
+  /* Meaning bearing: every stroke and connector in the four diagrams and the chart grid.
+     Raised to clear 3:1 against both ground and panel; data-1 stays a fill only, always
+     inside an outlined shape, since a fill has no such contrast floor to answer to. */
+  --data-2: #74857A;
   --warn: #8A5A2B;
   color-scheme: light;
 
@@ -73,7 +76,7 @@
     --accent-deep: #A3DABB;
     --accent-wash: #1F3428;
     --data-1: #2E3A32;
-    --data-2: #4E6155;
+    --data-2: #5E7365;
     --warn: #D9A66A;
     color-scheme: dark;
   }
@@ -90,7 +93,7 @@
   --accent-deep: #A3DABB;
   --accent-wash: #1F3428;
   --data-1: #2E3A32;
-  --data-2: #4E6155;
+  --data-2: #5E7365;
   --warn: #D9A66A;
   color-scheme: dark;
 }
@@ -280,7 +283,9 @@ code {
   background: transparent;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  padding: 7px 12px;
+  /* Icons are one size everywhere, 20px: the control grows to hold it rather than the
+     icon shrinking to fit the control. */
+  padding: 8px 12px;
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 600;
@@ -289,7 +294,7 @@ code {
   transition: border-color var(--motion-duration) var(--motion-ease), background-color var(--motion-duration) var(--motion-ease);
 }
 .theme-toggle:hover { border-color: var(--accent); background: var(--accent-wash); }
-.theme-toggle svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.theme-toggle svg { width: 20px; height: 20px; flex: 0 0 auto; }
 
 @media (max-width: 720px) {
   .topbar-inner { gap: var(--sp-12); }
@@ -335,7 +340,7 @@ code {
 .btn {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-8);
+  gap: 10px;
   font-family: var(--font-display);
   font-weight: 600;
   font-size: var(--text-14);
@@ -346,7 +351,8 @@ code {
   cursor: pointer;
   transition: transform var(--motion-duration) var(--motion-ease), background-color var(--motion-duration) var(--motion-ease), border-color var(--motion-duration) var(--motion-ease);
 }
-.btn svg { width: 16px; height: 16px; }
+/* Icons are one size everywhere, 20px, per the icons and diagrams spec. */
+.btn svg { width: 20px; height: 20px; flex: 0 0 auto; }
 .btn:active { transform: translateY(1px); }
 .btn-primary {
   background: var(--accent);
@@ -380,24 +386,28 @@ code {
   line-height: 1.7;
   white-space: pre;
   color: var(--ink);
-  padding-right: 40px;
+  /* Clears the copy control, sized for its 20px icon, sitting above the top right corner. */
+  padding-right: 60px;
 }
 .codeblock code { background: none; border: none; padding: 0; border-radius: 0; font-size: inherit; }
 .codeblock .rem { color: var(--muted); }
 
+/* The copy control. Its icon is the same 20px as every other icon on the site; the
+   control itself grew to hold that size comfortably rather than the icon shrinking to
+   fit a smaller button. */
 .copy-btn {
   position: absolute;
   top: 10px;
   right: 10px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-8);
   background: var(--ground);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  padding: 5px 9px;
+  padding: 7px 12px;
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--muted);
   cursor: pointer;
@@ -405,7 +415,7 @@ code {
 }
 .copy-btn:hover { color: var(--ink); border-color: var(--accent); }
 .copy-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.copy-btn svg { width: 14px; height: 14px; }
+.copy-btn svg { width: 20px; height: 20px; flex: 0 0 auto; }
 .copy-btn[data-copied="true"] { color: var(--accent); border-color: var(--accent); }
 
 /* Tables. Radius is 0, per spec. */
@@ -427,6 +437,10 @@ th {
   background: var(--panel);
 }
 td .mono, th .mono { font-size: 0.9em; }
+/* The trades table body, on the exchange page. Explicit, so a row is the same 40px
+   (10px cell padding, this line height, 10px padding) whether it holds the no-JS
+   placeholder, the loading skeleton, or a real trade. */
+.trade-row { line-height: 20px; }
 
 /* Page shell. */
 .page-main { display: block; }
@@ -537,6 +551,10 @@ section:last-of-type { border-bottom: none; }
   padding: 5px 8px;
   font-family: var(--font-mono);
   font-size: 13px;
+  /* Explicit, so its skeleton (.skel-row) can be sized to the exact same box: padding
+     5px top and bottom plus this line height is 30px, on the home desk and the exchange
+     board alike, since both read this one rule. */
+  line-height: 20px;
   font-variant-numeric: tabular-nums;
   border-radius: 4px;
   min-width: 0;
@@ -573,6 +591,9 @@ section:last-of-type { border-bottom: none; }
   font-size: var(--text-22);
   font-weight: 500;
   color: var(--ink);
+  /* Explicit, so its skeleton stays inside this exact box regardless of whether it holds
+     a number or the loading bar. */
+  line-height: 28px;
   font-variant-numeric: tabular-nums;
   min-width: 0;
   overflow-wrap: break-word;
@@ -591,6 +612,9 @@ section:last-of-type { border-bottom: none; }
 .desk-verify [data-role="verify-text"] { min-width: 0; overflow-wrap: break-word; text-align: right; }
 .desk-verify .verify-ok { color: var(--accent); font-weight: 600; }
 .desk-verify .verify-warn { color: var(--warn); font-weight: 600; }
+/* A 429 on verify means "checked recently", not a failure: explicitly muted rather than
+   left to inherit, so the state reads the same regardless of where this text sits. */
+.desk-verify .verify-checked { color: var(--muted); font-weight: 600; }
 
 .desk-updated {
   font-size: 12px;
@@ -604,14 +628,27 @@ section:last-of-type { border-bottom: none; }
 }
 .desk-failed { color: var(--warn); }
 
-/* Loading skeletons, shaped like the final rows. No motion: a shape, not a spinner. */
+/* Loading skeletons, sized to the exact box of the row they stand in for so nothing jumps
+   when the real read arrives. No motion: a shape, not a spinner. display: inline-block
+   because .skel-line sits nested inside an inline .ticker-last: a plain inline span ignores
+   an explicit height entirely, which left that one invisible. */
 .skel {
+  display: inline-block;
   background: var(--line);
   border-radius: 4px;
   opacity: 0.6;
 }
-.skel-row { height: 19px; margin-bottom: 2px; }
-.skel-line { height: 12px; }
+/* One .book-row is 30px (5px padding, 20px line height, 5px padding): see .book-row.
+   Used unchanged for the 5 level home desk and the 10 level exchange board skeleton. */
+.skel-row { display: block; height: 30px; }
+/* Sits inside .ticker-last, whose own line-height (28px) already fixes that row's box;
+   this only needs to read as a text bar within it. */
+.skel-line { width: 110px; height: 16px; vertical-align: middle; }
+/* One .trade-row is 40px (10px cell padding, 20px line height, 10px padding): see
+   .trade-row. A skeleton bar inside a cell, not a whole row replacement like .skel-row,
+   since a table row needs at least one real cell to keep its column widths. */
+.skel-trade-row td { height: 40px; }
+.skel-trade-row .skel-line { width: 70%; max-width: 220px; }
 
 /* Diagrams. Inline SVG, drawn with the tokens, each with a caption text alternative. */
 .diagram {
@@ -745,6 +782,9 @@ section:last-of-type { border-bottom: none; }
 .status-line { display: flex; align-items: center; gap: var(--sp-8); font-size: 13px; color: var(--muted); }
 .verify-ok { color: var(--accent); font-weight: 600; }
 .verify-warn { color: var(--warn); font-weight: 600; }
+/* A 429 on verify means "checked recently", not a failure: explicitly muted rather than
+   left to inherit, so the state reads the same regardless of where this text sits. */
+.verify-checked { color: var(--muted); font-weight: 600; }
 
 /* How it works: a sticky in page list at desktop, a horizontally scrolling row below it. */
 .guide { padding: var(--sp-64) 0 var(--sp-96); }

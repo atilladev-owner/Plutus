@@ -28,8 +28,8 @@ Light, on `:root`:
 | `--accent` | `#1C6E4A` | links, primary action, bids, diagram emphasis |
 | `--accent-deep` | `#145238` | hover and active |
 | `--accent-wash` | `#E4EFE8` | the tint behind an accent element |
-| `--data-1` | `#C9D2CB` | diagram fills, chart grid |
-| `--data-2` | `#9FAEA3` | diagram secondary strokes |
+| `--data-1` | `#C9D2CB` | diagram fills only, always inside an outlined shape |
+| `--data-2` | `#74857A` | every meaning bearing stroke and connector: the four diagrams, the chart grid |
 | `--warn` | `#8A5A2B` | semantic only: a stale or failed live read; never decoration |
 
 Dark, under `prefers-color-scheme: dark` guarded as `:root:not([data-theme="light"])` and
@@ -46,12 +46,14 @@ again under `:root[data-theme="dark"]`:
 | `--accent-deep` | `#A3DABB` |
 | `--accent-wash` | `#1F3428` |
 | `--data-1` | `#2E3A32` |
-| `--data-2` | `#4E6155` |
+| `--data-2` | `#5E7365` |
 | `--warn` | `#D9A66A` |
 
 Every text and ground pair must compute to at least 4.5:1 in both themes; the builder
 writes the numbers in the report. Asks in the book are set in `--ink`, bids in `--accent`,
-and both columns carry a text label, so colour never carries the meaning alone.
+and both columns carry a text label, so colour never carries the meaning alone. `--data-2`
+is a non-text graphical colour, held to 3:1 against both `--ground` and `--panel`; `--data-1`
+carries no such floor because it is a fill only, never the shape's own edge.
 
 ## Type
 

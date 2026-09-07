@@ -6,7 +6,7 @@
 <title>Plutus</title>
 <meta name="description" content="A live look at the Plutus ledger and exchange API: how it works, what to build with it, and how to verify it yourself.">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700&family=Nunito:wght@400;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700&family=Nunito:wght@400;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="site.css">
 <script src="site.js"></script>
 </head>
@@ -33,12 +33,12 @@
       </nav>
     </div>
     <button type="button" class="theme-toggle" data-theme-toggle aria-label="Theme, currently System. Activate to change it.">
-      <svg data-theme-icon="system" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <svg data-theme-icon="system" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <rect width="20" height="14" x="2" y="3" rx="2"></rect>
         <line x1="8" x2="16" y1="21" y2="21"></line>
         <line x1="12" x2="12" y1="17" y2="21"></line>
       </svg>
-      <svg data-theme-icon="light" hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <svg data-theme-icon="light" hidden width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="12" cy="12" r="4"></circle>
         <path d="M12 2v2"></path>
         <path d="M12 20v2"></path>
@@ -49,7 +49,7 @@
         <path d="m6.34 17.66-1.41 1.41"></path>
         <path d="m19.07 4.93-1.41 1.41"></path>
       </svg>
-      <svg data-theme-icon="dark" hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <svg data-theme-icon="dark" hidden width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
       </svg>
       <span data-role="theme-label">System</span>
@@ -63,17 +63,17 @@
     <div class="wrap hero-grid">
       <div class="hero-copy">
         <h1>Prove the books.<br>Watch the trades.</h1>
-        <p class="lede">Plutus is a ledger and a paper trading exchange in one HTTP API. The book on the right is real, and it is reading itself again every five seconds.</p>
+        <p class="lede">Plutus is a ledger and a paper trading exchange in one API, and the book on the right is live.</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="/how-it-works">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M5 12h14"></path>
               <path d="m12 5 7 7-7 7"></path>
             </svg>
             See how it works
           </a>
           <a class="btn btn-ghost" href="https://github.com/atilladev-owner/Plutus">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 1.5 5 1.5 5 1.5c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 8.5c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"></path>
               <path d="M9 18c-4.51 2-5-2-7-2"></path>
             </svg>
@@ -148,18 +148,18 @@
           <line x1="290" y1="108" x2="580" y2="108" style="stroke: var(--accent); stroke-width: 2;" marker-end="url(#d1-arrow)"></line>
           <text x="435" y="90" text-anchor="middle" style="font-family: var(--font-mono); font-size: 13px; fill: var(--accent);">125,000 minor units</text>
 
-          <line x1="435" y1="156" x2="435" y2="202" style="stroke: var(--line); stroke-width: 1.5;"></line>
+          <line x1="435" y1="156" x2="435" y2="202" style="stroke: var(--data-2); stroke-width: 1.5;"></line>
 
           <rect x="255" y="202" width="360" height="92" rx="10" style="fill: var(--ground); stroke: var(--accent); stroke-width: 1.5;"></rect>
           <text x="435" y="234" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 14px; fill: var(--ink);">journal entry number 482</text>
-          <text x="435" y="256" text-anchor="middle" style="font-family: var(--font-mono); font-size: 12px; fill: var(--muted);">hash of entry 481 plus this payload</text>
+          <text x="435" y="256" text-anchor="middle" style="font-family: var(--font-mono); font-size: 13px; fill: var(--muted);">hash of entry 481 plus this payload</text>
 
-          <rect x="60" y="216" width="150" height="60" rx="8" style="fill: var(--data-1);"></rect>
-          <text x="135" y="250" text-anchor="middle" style="font-family: var(--font-mono); font-size: 12px; fill: var(--ink);">entry 481</text>
+          <rect x="60" y="216" width="150" height="60" rx="8" style="fill: var(--data-1); stroke: var(--line); stroke-width: 1;"></rect>
+          <text x="135" y="250" text-anchor="middle" style="font-family: var(--font-mono); font-size: 13px; fill: var(--ink);">entry 481</text>
           <line x1="210" y1="246" x2="255" y2="246" style="stroke: var(--data-2); stroke-width: 1.5; stroke-dasharray: 3 3;"></line>
 
-          <rect x="670" y="216" width="150" height="60" rx="8" style="fill: var(--data-1); opacity: 0.6;"></rect>
-          <text x="745" y="250" text-anchor="middle" style="font-family: var(--font-mono); font-size: 12px; fill: var(--muted);">entry 483</text>
+          <rect x="670" y="216" width="150" height="60" rx="8" style="fill: var(--data-1); stroke: var(--line); stroke-width: 1; opacity: 0.6;"></rect>
+          <text x="745" y="250" text-anchor="middle" style="font-family: var(--font-mono); font-size: 13px; fill: var(--muted);">entry 483</text>
           <line x1="615" y1="246" x2="670" y2="246" style="stroke: var(--data-2); stroke-width: 1.5; stroke-dasharray: 3 3;"></line>
         </svg>
         <figcaption class="diagram-caption">A transfer moves money between two accounts as legs, and the journal entry it appends carries the hash of the entry before it.</figcaption>
@@ -219,7 +219,7 @@
           </div>
           <p>A hold reserves a ceiling when the tab opens, is captured for the exact amount owed at close, and releases the rest. Nobody's money moves until the tab is actually settled.</p>
           <svg class="usecase-diagram" viewBox="0 0 220 46" role="presentation" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-            <rect x="0" y="16" width="220" height="14" rx="4" style="fill: var(--data-1);"></rect>
+            <rect x="0" y="16" width="220" height="14" rx="4" style="fill: var(--data-1); stroke: var(--line); stroke-width: 1;"></rect>
             <rect x="0" y="16" width="140" height="14" rx="4" style="fill: var(--accent-wash);"></rect>
             <rect x="0" y="16" width="70" height="14" rx="4" style="fill: var(--accent);"></rect>
             <text x="0" y="10" style="font-family: var(--font-mono); font-size: 9px; fill: var(--muted);">opened</text>
@@ -257,7 +257,7 @@
           <div class="codeblock">
             <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/keys</code></pre>
             <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/keys">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
                 <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
               </svg>
@@ -274,7 +274,7 @@
   -H "Content-Type: application/json" \
   -d '{"name":"shop"}'</code></pre>
             <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -d '{&quot;name&quot;:&quot;shop&quot;}'">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
                 <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
               </svg>
@@ -292,7 +292,7 @@
   -H "Idempotency-Key: fund-1" \
   -d '{"legs":[{"from":"world:GHS","to":"'$TILL'","asset":"GHS","amount":"125000"}]}'</code></pre>
               <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -H &quot;Idempotency-Key: fund-1&quot; -d '{&quot;legs&quot;:[{&quot;from&quot;:&quot;world:GHS&quot;,&quot;to&quot;:&quot;'$TILL'&quot;,&quot;asset&quot;:&quot;GHS&quot;,&quot;amount&quot;:&quot;125000&quot;}]}'">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
                 <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
               </svg>
@@ -302,7 +302,7 @@
         </div>
       </div>
       <a class="btn btn-primary" href="/set-up">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M5 12h14"></path>
           <path d="m12 5 7 7-7 7"></path>
         </svg>

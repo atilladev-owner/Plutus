@@ -223,6 +223,14 @@
     return out;
   }
 
+  function skeletonTradeRows(count) {
+    var out = "";
+    for (var i = 0; i < count; i += 1) {
+      out += '<tr class="trade-row skel-trade-row"><td colspan="4"><span class="skel skel-line"></span></td></tr>';
+    }
+    return out;
+  }
+
   function flashRow(row) {
     row.setAttribute("data-changed", "true");
     window.requestAnimationFrame(function () {
@@ -290,7 +298,7 @@
     function showSkeleton() {
       if (bidRows) bidRows.innerHTML = skeletonRows(5);
       if (askRows) askRows.innerHTML = skeletonRows(5);
-      if (tickerLast) tickerLast.innerHTML = '<span class="skel skel-line" style="width:110px"></span>';
+      if (tickerLast) tickerLast.innerHTML = '<span class="skel skel-line"></span>';
       setStatus("loading", "Reading the book");
     }
 
@@ -339,10 +347,13 @@
 
     function renderVerify(text) {
       if (!verifyText) return;
-      verifyText.classList.remove("verify-ok", "verify-warn");
+      verifyText.classList.remove("verify-ok", "verify-warn", "verify-checked");
       verifyText.textContent = text.message;
       if (text.state === "ok") verifyText.classList.add("verify-ok");
       if (text.state === "warn") verifyText.classList.add("verify-warn");
+      // A 429 is "checked recently", not a failure: styled explicitly rather than left to
+      // inherit its parent's muted colour by default.
+      if (text.state === "checked") verifyText.classList.add("verify-checked");
     }
 
     function verifyOnce() {
@@ -383,10 +394,13 @@
 
     checkVerify("/v1/exchange/verify").then(function (result) {
       if (text) {
-        text.classList.remove("verify-ok", "verify-warn");
+        text.classList.remove("verify-ok", "verify-warn", "verify-checked");
         text.textContent = result.message;
         if (result.state === "ok") text.classList.add("verify-ok");
         if (result.state === "warn") text.classList.add("verify-warn");
+        // A 429 is "checked recently", not a failure: styled explicitly rather than left
+        // to inherit its parent's muted colour by default.
+        if (result.state === "checked") text.classList.add("verify-checked");
       }
       if (dot) dot.setAttribute("data-state", result.state === "warn" ? "warn" : "ok");
       if (status) status.textContent = result.state === "warn" ? "Failed" : "Live";
@@ -453,7 +467,7 @@
     for (var g = 0; g <= gridSteps; g += 1) {
       var gy = marginTop + (g / gridSteps) * chartHeight;
       var priceAtLine = maxPrice - (span * BigInt(g)) / BigInt(gridSteps);
-      gridLines += '<line x1="' + marginLeft + '" y1="' + gy + '" x2="' + (width - marginRight) + '" y2="' + gy + '" style="stroke: var(--data-1); stroke-width: 1;"></line>';
+      gridLines += '<line x1="' + marginLeft + '" y1="' + gy + '" x2="' + (width - marginRight) + '" y2="' + gy + '" style="stroke: var(--data-2); stroke-width: 1;"></line>';
       gridLines += '<text x="' + (marginLeft - 8) + '" y="' + (gy + 4) + '" text-anchor="end" style="font-family: var(--font-mono); font-size: 11px; fill: var(--muted);">' + formatMinor(priceAtLine.toString(), decimals.quote) + '</text>';
     }
 
@@ -527,6 +541,7 @@
     function showBoardSkeleton() {
       if (bidRows) bidRows.innerHTML = skeletonRows(10);
       if (askRows) askRows.innerHTML = skeletonRows(10);
+      if (tradesBody) tradesBody.innerHTML = skeletonTradeRows(6);
       setBoardStatus("loading", "Reading the book");
     }
 
@@ -557,7 +572,7 @@
     function renderTrades(trades, decimals, market) {
       if (!tradesBody) return;
       if (!trades || trades.length === 0) {
-        tradesBody.innerHTML = '<tr><td colspan="4">No trades yet on this market.</td></tr>';
+        tradesBody.innerHTML = '<tr class="trade-row"><td colspan="4">No trades yet on this market.</td></tr>';
         return;
       }
       var quote = quoteOf(market);
@@ -565,7 +580,7 @@
       var now = Date.now();
       var rows = trades.map(function (t) {
         var when = formatRelative(new Date(t.created_at).getTime(), now);
-        return "<tr><td>" + when + "</td><td class=\"mono\">" + formatMinor(t.price, decimals.quote) + " " + quote
+        return "<tr class=\"trade-row\"><td>" + when + "</td><td class=\"mono\">" + formatMinor(t.price, decimals.quote) + " " + quote
           + "</td><td class=\"mono\">" + formatMinor(t.quantity, decimals.base) + " " + base
           + "</td><td class=\"mono\">" + formatMinor(t.notional, decimals.quote) + " " + quote + "</td></tr>";
       });
@@ -680,7 +695,6 @@
       askMap = null;
       haveRead = false;
       showBoardSkeleton();
-      if (tradesBody) tradesBody.innerHTML = '<tr><td colspan="4">Reading trades</td></tr>';
       if (candlesFigure) candlesFigure.innerHTML = '<p class="desk-empty">Reading candles</p>';
       pollBoard();
       pollCandles();

@@ -6,7 +6,7 @@
 <title>Use cases, Plutus</title>
 <meta name="description" content="Four narratives built on accounts, transfers and holds: a savings group, group expenses, a tab, and a deposit on a reservation, each with the API calls and a money flow diagram.">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700&family=Nunito:wght@400;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700&family=Nunito:wght@400;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="site.css">
 <script src="site.js"></script>
 </head>
@@ -33,12 +33,12 @@
       </nav>
     </div>
     <button type="button" class="theme-toggle" data-theme-toggle aria-label="Theme, currently System. Activate to change it.">
-      <svg data-theme-icon="system" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <svg data-theme-icon="system" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <rect width="20" height="14" x="2" y="3" rx="2"></rect>
         <line x1="8" x2="16" y1="21" y2="21"></line>
         <line x1="12" x2="12" y1="17" y2="21"></line>
       </svg>
-      <svg data-theme-icon="light" hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <svg data-theme-icon="light" hidden width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="12" cy="12" r="4"></circle>
         <path d="M12 2v2"></path>
         <path d="M12 20v2"></path>
@@ -49,7 +49,7 @@
         <path d="m6.34 17.66-1.41 1.41"></path>
         <path d="m19.07 4.93-1.41 1.41"></path>
       </svg>
-      <svg data-theme-icon="dark" hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <svg data-theme-icon="dark" hidden width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
       </svg>
       <span data-role="theme-label">System</span>
@@ -91,7 +91,7 @@
   -H "Idempotency-Key: contribution-ama-sep" \
   -d '{"legs":[{"from":"'$AMA'","to":"'$POT'","asset":"GHS","amount":"5000"}]}'</code></pre>
           <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -H &quot;Idempotency-Key: contribution-ama-sep&quot; -d '{&quot;legs&quot;:[{&quot;from&quot;:&quot;'$AMA'&quot;,&quot;to&quot;:&quot;'$POT'&quot;,&quot;asset&quot;:&quot;GHS&quot;,&quot;amount&quot;:&quot;5000&quot;}]}'">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
               <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
             </svg>
@@ -105,7 +105,7 @@
   -H "Idempotency-Key: payout-kofi-sep" \
   -d '{"legs":[{"from":"'$POT'","to":"'$KOFI'","asset":"GHS","amount":"30000"}]}'</code></pre>
           <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -H &quot;Idempotency-Key: payout-kofi-sep&quot; -d '{&quot;legs&quot;:[{&quot;from&quot;:&quot;'$POT'&quot;,&quot;to&quot;:&quot;'$KOFI'&quot;,&quot;asset&quot;:&quot;GHS&quot;,&quot;amount&quot;:&quot;30000&quot;}]}'">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
               <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
             </svg>
@@ -162,7 +162,7 @@
   -H "Idempotency-Key: groceries-week-1" \
   -d '{"legs":[{"from":"'$AMA'","to":"'$KOFI'","asset":"GHS","amount":"3000"}],"memo":"half of groceries"}'</code></pre>
           <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -H &quot;Idempotency-Key: groceries-week-1&quot; -d '{&quot;legs&quot;:[{&quot;from&quot;:&quot;'$AMA'&quot;,&quot;to&quot;:&quot;'$KOFI'&quot;,&quot;asset&quot;:&quot;GHS&quot;,&quot;amount&quot;:&quot;3000&quot;}],&quot;memo&quot;:&quot;half of groceries&quot;}'">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
               <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
             </svg>
@@ -173,7 +173,7 @@
           <pre><code>curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/accounts/$KOFI \
   -H "Authorization: Bearer $KEY"</code></pre>
           <button type="button" class="copy-btn" data-copy="curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/accounts/$KOFI -H &quot;Authorization: Bearer $KEY&quot;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
               <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
             </svg>
@@ -222,7 +222,7 @@
   -H "Content-Type: application/json" \
   -d '{"account":"'$GUEST'","amount":"20000","memo":"tab ceiling"}'</code></pre>
           <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/holds -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -d '{&quot;account&quot;:&quot;'$GUEST'&quot;,&quot;amount&quot;:&quot;20000&quot;,&quot;memo&quot;:&quot;tab ceiling&quot;}'">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
               <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
             </svg>
@@ -235,7 +235,7 @@
   -H "Content-Type: application/json" \
   -d '{"to":"'$TILL'","amount":"14500","release_remainder":true}'</code></pre>
           <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/holds/$HOLD/capture -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -d '{&quot;to&quot;:&quot;'$TILL'&quot;,&quot;amount&quot;:&quot;14500&quot;,&quot;release_remainder&quot;:true}'">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
               <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
             </svg>
@@ -243,7 +243,7 @@
           </button>
         </div>
         <svg class="usecase-diagram" viewBox="0 0 220 46" role="presentation" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" style="margin-top: var(--sp-16);">
-          <rect x="0" y="16" width="220" height="14" rx="4" style="fill: var(--data-1);"></rect>
+          <rect x="0" y="16" width="220" height="14" rx="4" style="fill: var(--data-1); stroke: var(--line); stroke-width: 1;"></rect>
           <rect x="0" y="16" width="140" height="14" rx="4" style="fill: var(--accent-wash);"></rect>
           <rect x="0" y="16" width="70" height="14" rx="4" style="fill: var(--accent);"></rect>
           <text x="0" y="10" style="font-family: var(--font-mono); font-size: 9px; fill: var(--muted);">opened</text>
@@ -277,7 +277,7 @@
   -H "Content-Type: application/json" \
   -d '{"account":"'$GUEST'","amount":"50000","expires_in_seconds":604800,"memo":"reservation deposit"}'</code></pre>
           <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/holds -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -d '{&quot;account&quot;:&quot;'$GUEST'&quot;,&quot;amount&quot;:&quot;50000&quot;,&quot;expires_in_seconds&quot;:604800,&quot;memo&quot;:&quot;reservation deposit&quot;}'">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
               <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
             </svg>
@@ -288,7 +288,7 @@
           <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/holds/$HOLD/release \
   -H "Authorization: Bearer $KEY"</code></pre>
           <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/holds/$HOLD/release -H &quot;Authorization: Bearer $KEY&quot;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
               <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
             </svg>

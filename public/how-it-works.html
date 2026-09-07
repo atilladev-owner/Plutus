@@ -6,7 +6,7 @@
 <title>How it works, Plutus</title>
 <meta name="description" content="A long form tour of Plutus: the ledger, holds, the hash chained journal, matching, signing and the house, with the exact request and reply shapes.">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700&family=Nunito:wght@400;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700&family=Nunito:wght@400;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="site.css">
 <script src="site.js"></script>
 </head>
@@ -33,12 +33,12 @@
       </nav>
     </div>
     <button type="button" class="theme-toggle" data-theme-toggle aria-label="Theme, currently System. Activate to change it.">
-      <svg data-theme-icon="system" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <svg data-theme-icon="system" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <rect width="20" height="14" x="2" y="3" rx="2"></rect>
         <line x1="8" x2="16" y1="21" y2="21"></line>
         <line x1="12" x2="12" y1="17" y2="21"></line>
       </svg>
-      <svg data-theme-icon="light" hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <svg data-theme-icon="light" hidden width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="12" cy="12" r="4"></circle>
         <path d="M12 2v2"></path>
         <path d="M12 20v2"></path>
@@ -49,7 +49,7 @@
         <path d="m6.34 17.66-1.41 1.41"></path>
         <path d="m19.07 4.93-1.41 1.41"></path>
       </svg>
-      <svg data-theme-icon="dark" hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <svg data-theme-icon="dark" hidden width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
       </svg>
       <span data-role="theme-label">System</span>
@@ -103,7 +103,7 @@
   "memo": "till funding"
 }</code></pre>
             <button type="button" class="copy-btn" data-copy="POST /v1/ledgers/{id}/transfers&#10;{&quot;legs&quot;:[{&quot;from&quot;:&quot;world:GHS&quot;,&quot;to&quot;:&quot;acct_till&quot;,&quot;asset&quot;:&quot;GHS&quot;,&quot;amount&quot;:&quot;125000&quot;}],&quot;memo&quot;:&quot;till funding&quot;}">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
                 <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
               </svg>
@@ -174,34 +174,34 @@
                   <path d="M0 0 L10 5 L0 10 z" style="fill: var(--accent);"></path>
                 </marker>
               </defs>
-              <rect x="30" y="60" width="170" height="90" rx="8" style="fill: var(--data-1);"></rect>
+              <rect x="30" y="60" width="170" height="90" rx="8" style="fill: var(--data-1); stroke: var(--line); stroke-width: 1;"></rect>
               <text x="115" y="98" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 14px; fill: var(--ink);">entry 1</text>
               <text x="115" y="120" text-anchor="middle" style="font-family: var(--font-mono); font-size: 13px; fill: var(--muted);">hash of nothing</text>
 
               <line x1="200" y1="105" x2="248" y2="105" style="stroke: var(--accent); stroke-width: 2;" marker-end="url(#d4-arrow)"></line>
 
-              <rect x="250" y="60" width="170" height="90" rx="8" style="fill: var(--data-1);"></rect>
+              <rect x="250" y="60" width="170" height="90" rx="8" style="fill: var(--data-1); stroke: var(--line); stroke-width: 1;"></rect>
               <text x="335" y="98" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 14px; fill: var(--ink);">entry 2</text>
               <text x="335" y="120" text-anchor="middle" style="font-family: var(--font-mono); font-size: 13px; fill: var(--muted);">hash of entry 1</text>
 
               <line x1="420" y1="105" x2="468" y2="105" style="stroke: var(--accent); stroke-width: 2;" marker-end="url(#d4-arrow)"></line>
 
-              <rect x="470" y="60" width="170" height="90" rx="8" style="fill: var(--data-1);"></rect>
+              <rect x="470" y="60" width="170" height="90" rx="8" style="fill: var(--data-1); stroke: var(--line); stroke-width: 1;"></rect>
               <text x="555" y="98" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 14px; fill: var(--ink);">entry 3</text>
               <text x="555" y="120" text-anchor="middle" style="font-family: var(--font-mono); font-size: 13px; fill: var(--muted);">hash of entry 2</text>
 
               <line x1="640" y1="105" x2="688" y2="105" style="stroke: var(--accent); stroke-width: 2;" marker-end="url(#d4-arrow)"></line>
 
-              <rect x="690" y="60" width="170" height="90" rx="8" style="fill: var(--data-1);"></rect>
+              <rect x="690" y="60" width="170" height="90" rx="8" style="fill: var(--data-1); stroke: var(--line); stroke-width: 1;"></rect>
               <text x="775" y="98" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 14px; fill: var(--ink);">entry 4</text>
               <text x="775" y="120" text-anchor="middle" style="font-family: var(--font-mono); font-size: 13px; fill: var(--muted);">hash of entry 3</text>
 
               <text x="440" y="35" text-anchor="middle" style="font-family: var(--font-body); font-size: 13px; fill: var(--muted);">each hash covers everything before it</text>
 
-              <line x1="115" y1="150" x2="115" y2="200" style="stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 3 3;"></line>
-              <line x1="775" y1="150" x2="775" y2="200" style="stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 3 3;"></line>
-              <line x1="115" y1="200" x2="775" y2="200" style="stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 3 3;"></line>
-              <line x1="445" y1="200" x2="445" y2="225" style="stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 3 3;"></line>
+              <line x1="115" y1="150" x2="115" y2="200" style="stroke: var(--data-2); stroke-width: 1.5; stroke-dasharray: 3 3;"></line>
+              <line x1="775" y1="150" x2="775" y2="200" style="stroke: var(--data-2); stroke-width: 1.5; stroke-dasharray: 3 3;"></line>
+              <line x1="115" y1="200" x2="775" y2="200" style="stroke: var(--data-2); stroke-width: 1.5; stroke-dasharray: 3 3;"></line>
+              <line x1="445" y1="200" x2="445" y2="225" style="stroke: var(--data-2); stroke-width: 1.5; stroke-dasharray: 3 3;"></line>
 
               <rect x="240" y="225" width="410" height="100" rx="10" style="fill: var(--ground); stroke: var(--accent); stroke-width: 1.5;"></rect>
               <text x="445" y="260" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 14px; fill: var(--ink);">verify recomputes every hash from entry 1 forward</text>
@@ -245,13 +245,13 @@
               <text x="500" y="58" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 14px; fill: var(--ink);">resting sell, best price</text>
               <text x="500" y="80" text-anchor="middle" style="font-family: var(--font-mono); font-size: 13px; fill: var(--muted);">1st in price then time</text>
 
-              <line x1="500" y1="100" x2="500" y2="120" style="stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 3 3;"></line>
-              <rect x="360" y="120" width="280" height="70" rx="8" style="fill: var(--data-1);"></rect>
+              <line x1="500" y1="100" x2="500" y2="120" style="stroke: var(--data-2); stroke-width: 1.5; stroke-dasharray: 3 3;"></line>
+              <rect x="360" y="120" width="280" height="70" rx="8" style="fill: var(--data-1); stroke: var(--line); stroke-width: 1;"></rect>
               <text x="500" y="148" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 14px; fill: var(--ink);">resting sell, next price</text>
               <text x="500" y="170" text-anchor="middle" style="font-family: var(--font-mono); font-size: 13px; fill: var(--muted);">2nd in price then time</text>
 
-              <line x1="500" y1="190" x2="500" y2="210" style="stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 3 3;"></line>
-              <rect x="360" y="210" width="280" height="70" rx="8" style="fill: var(--data-1); opacity: 0.6;"></rect>
+              <line x1="500" y1="190" x2="500" y2="210" style="stroke: var(--data-2); stroke-width: 1.5; stroke-dasharray: 3 3;"></line>
+              <rect x="360" y="210" width="280" height="70" rx="8" style="fill: var(--data-1); stroke: var(--line); stroke-width: 1; opacity: 0.6;"></rect>
               <text x="500" y="238" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 14px; fill: var(--muted);">resting sell, next</text>
               <text x="500" y="260" text-anchor="middle" style="font-family: var(--font-mono); font-size: 13px; fill: var(--muted);">3rd in price then time</text>
 
@@ -275,7 +275,7 @@
   "client_order_id": "example-order-1"
 }</code></pre>
             <button type="button" class="copy-btn" data-copy="POST /v1/exchange/orders&#10;{&quot;market&quot;:&quot;BTC-USDT&quot;,&quot;side&quot;:&quot;buy&quot;,&quot;type&quot;:&quot;limit&quot;,&quot;price&quot;:&quot;6000000000&quot;,&quot;quantity&quot;:&quot;100000&quot;,&quot;client_order_id&quot;:&quot;example-order-1&quot;}">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
                 <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
               </svg>
