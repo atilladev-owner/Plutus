@@ -70,4 +70,19 @@ describe("house rules", () => {
     const hasSecretViolation = checkTree(root).some((v: Violation) => v.rule === "no-secrets");
     expect(hasSecretViolation).toBe(false);
   });
+  it("exempts the one documented example secret named in README and the reference page", () => {
+    const root = tree({
+      "README.md": "Secret: pl_test_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a5b6c7d8e9f0a1b2c\n",
+      "public/index.html": "<code>pl_test_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a5b6c7d8e9f0a1b2c</code>\n",
+    });
+    const hasSecretViolation = checkTree(root).some((v: Violation) => v.rule === "no-secrets");
+    expect(hasSecretViolation).toBe(false);
+  });
+  it("still flags a real secret shaped string sharing a line with the documented example", () => {
+    const root = tree({
+      "README.md": "pl_test_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a5b6c7d8e9f0a1b2c " + "pl_" + "live_abcdefghijklmnopqrstuvwxyz0123456789ABCDEF" + "\n",
+    });
+    const hits = checkTree(root).filter((v: Violation) => v.rule === "no-secrets");
+    expect(hits).toHaveLength(1);
+  });
 });

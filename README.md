@@ -6,7 +6,7 @@ A ledger you can audit and an exchange you can trade against.
 
 ## What it is
 
-Plutus is a multi asset ledger, and from milestone two a paper trading exchange, exposed as a single HTTP API. Every account is double entry, every transfer runs as one Postgres function under row locks, and every write appends to a hash chained journal anyone can verify. Idempotency keys make a retried write safe, and webhook deliveries are signed and retried on a fixed schedule. The whole surface is asserted by a test suite of 233 tests across 48 files, run against a real Postgres, not a mock.
+Plutus is a multi asset ledger, and from milestone two a paper trading exchange, exposed as a single HTTP API. Every account is double entry, every transfer runs as one Postgres function under row locks, and every write appends to a hash chained journal anyone can verify. Idempotency keys make a retried write safe, and webhook deliveries are signed and retried on a fixed schedule. The whole surface is asserted by a test suite of 236 tests across 48 files, run against a real Postgres, not a mock.
 
 ## Thirty seconds
 
@@ -39,7 +39,21 @@ Milestone two adds a paper trading exchange, built entirely on the ledger above.
 
 **The faucet.** A sandbox key calls `POST /v1/exchange/faucet` and receives 100,000 USDT, 1 BTC and 10 ETH, funded from the world exactly the way a transfer funds any account. Once per 24 hours per key; a second call inside the window answers 429 with a `Retry-After`. `POST /v1/exchange/reset` cancels every open order, releases every hold, and nets every balance back to those faucet amounts, for starting over without a new key.
 
-**A signed call, in full.** Trading endpoints sign every request instead of sending a bearer token. Four headers travel with the request: `X-Plutus-Key-Id`, `X-Plutus-Timestamp` in Unix milliseconds, `X-Plutus-Recv-Window` (optional, default 5000ms), and `X-Plutus-Signature`, a hex HMAC SHA256 over `timestamp + "\n" + METHOD + "\n" + path + "\n" + body`, keyed by the SHA-256 digest of the key secret rather than the secret itself, since that digest is all the server ever stores. Worked example below: a real key id and secret invented for this README, a fixed timestamp, and the signature `signRequest` (`src/platform/signing.ts`) actually produces for them, so every value here can be recomputed and checked.
+**A signed call, in full.** Trading endpoints sign every request instead of sending a bearer token. Four headers travel with the request: `X-Plutus-Key-Id`, `X-Plutus-Timestamp` in Unix milliseconds, `X-Plutus-Recv-Window` (optional, default 5000ms), and `X-Plutus-Signature`, a hex HMAC SHA256 over `timestamp + "\n" + METHOD + "\n" + path + "\n" + body`, keyed by the SHA-256 digest of the key secret rather than the secret itself, since that digest is all the server ever stores. The worked example below uses a key id and secret invented for this README, so the signature can actually be recomputed rather than taken on trust:
+
+- Key id: `key_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a`
+- Secret: `pl_test_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a5b6c7d8e9f0a1b2c`. This key does not exist. Signing with it authenticates against nothing, live or otherwise.
+
+The exact bytes HMAC SHA256 signs, keyed by the SHA-256 digest of that secret, one line for the timestamp, the method, the path and the body, with no trailing newline after the body:
+
+```
+1767225600000
+POST
+/v1/exchange/orders
+{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000"}
+```
+
+`signRequest` (`src/platform/signing.ts`) is what actually produced the header below from those bytes and that secret.
 
 ```bash
 BODY='{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000"}'
@@ -98,7 +112,9 @@ Ceilings apply to sandbox keys and their ledgers. A ceiling hit is a 409 `sandbo
 | Endpoint weight | 1,200 per minute per key |
 | Order placement | capped separately at 10 per second per key |
 | Faucet | once per 24 hours per sandbox key |
-| Public market data reads | cached 2 seconds, weight charged per address |
+| Markets list | free, no weight; cached 2 seconds |
+| Book, trades, ticker | 5 each, charged per address; cached 2 seconds |
+| Candles | 10, charged per address; cached 2 seconds |
 | Concurrent streams | 10 per address |
 | Public exchange verify | 2 per minute per address |
 

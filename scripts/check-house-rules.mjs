@@ -18,6 +18,22 @@ const SECRETS = [
   /postgres(ql)?:\/\/[^:\s]+:[^@\s]{8,}@/,
 ];
 
+/**
+ * The narrowest possible exemption from no-secrets: exact values, not a path or a looser
+ * pattern. README.md and public/index.html's worked signing examples (spec 10.8) name a
+ * key secret in full, on purpose, so a reader can recompute the HMAC signature by hand
+ * rather than take the header on trust; that secret is invented for the example, belongs
+ * to no real key, and authenticates against nothing, live or otherwise. Every other
+ * string shaped like a real secret is still a violation: a line is only exempt after this
+ * exact substring is removed from it, so a real secret sharing a line with this one would
+ * still be caught.
+ */
+const DOCUMENTED_EXAMPLE_SECRETS = ["pl_test_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a5b6c7d8e9f0a1b2c"];
+
+function withoutDocumentedExamples(line) {
+  return DOCUMENTED_EXAMPLE_SECRETS.reduce((acc, s) => acc.split(s).join(""), line);
+}
+
 function walk(root, dir, out) {
   for (const name of readdirSync(dir)) {
     if (SKIP_DIRS.has(name)) continue;
@@ -51,7 +67,7 @@ export function checkTree(root) {
       if (inSrc && CONSOLE.test(line)) violations.push({ rule: "no-console", ...at });
       if (inSrc && FLOAT.test(line)) violations.push({ rule: "no-float-money", ...at });
       if (inSrc && ANY.test(line)) violations.push({ rule: "no-any", ...at });
-      if (!isEnvExample && !isDesignDoc && SECRETS.some((re) => re.test(line))) violations.push({ rule: "no-secrets", ...at });
+      if (!isEnvExample && !isDesignDoc && SECRETS.some((re) => re.test(withoutDocumentedExamples(line)))) violations.push({ rule: "no-secrets", ...at });
     });
   }
   return violations;

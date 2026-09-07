@@ -313,7 +313,13 @@ curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers -
 curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/verify -H "Authorization: Bearer $KEY"</code></pre></div>
 
         <h3>Signing for trading</h3>
-        <p>Exchange trading endpoints sign every request instead of sending a bearer token. Four headers travel together: <code>X-Plutus-Key-Id</code>, <code>X-Plutus-Timestamp</code> in Unix milliseconds, <code>X-Plutus-Recv-Window</code> in milliseconds, and <code>X-Plutus-Signature</code>, a hex HMAC SHA256 over <code>timestamp + "\n" + METHOD + "\n" + path + "\n" + body</code>, keyed by the SHA-256 digest of the key secret rather than the secret itself, since that digest is all the server ever stores. The worked example below uses a key id and secret invented for this page, so every value in it can be recomputed and checked.</p>
+        <p>Exchange trading endpoints sign every request instead of sending a bearer token. Four headers travel together: <code>X-Plutus-Key-Id</code>, <code>X-Plutus-Timestamp</code> in Unix milliseconds, <code>X-Plutus-Recv-Window</code> in milliseconds, and <code>X-Plutus-Signature</code>, a hex HMAC SHA256 over <code>timestamp + "\n" + METHOD + "\n" + path + "\n" + body</code>, keyed by the SHA-256 digest of the key secret rather than the secret itself, since that digest is all the server ever stores. The worked example below uses a key id and secret invented for this page, so the signature can actually be recomputed rather than taken on trust.</p>
+        <p>Key id: <code>key_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a</code>. Secret: <code>pl_test_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a5b6c7d8e9f0a1b2c</code>. This key does not exist. Signing with it authenticates against nothing, live or otherwise. The exact bytes HMAC SHA256 signs, keyed by the SHA-256 digest of that secret, one line for the timestamp, the method, the path and the body, with no trailing newline after the body:</p>
+        <div class="block"><pre><code>1767225600000
+POST
+/v1/exchange/orders
+{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000"}</code></pre></div>
+        <p><code>signRequest</code> (<code>src/platform/signing.ts</code>) is what actually produced the header below from those bytes and that secret.</p>
         <div class="block"><pre><code>BODY='{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000"}'
 curl -s -X POST https://plutus-ten-eta.vercel.app/v1/exchange/orders \
   -H "Content-Type: application/json" \
@@ -325,7 +331,11 @@ curl -s -X POST https://plutus-ten-eta.vercel.app/v1/exchange/orders \
         <p><code>docs/place-order.mjs</code> in the repository reimplements this with nothing but <code>node:crypto</code>, reads a key id and secret from the environment, and places one real order against the live host from any machine, including one that has never cloned this repository.</p>
 
         <h3>The faucet</h3>
-        <p>A sandbox key funds itself from the world with 100,000 USDT, 1 BTC and 10 ETH, once per 24 hours. It is a signed call like any other trading endpoint.</p>
+        <p>A sandbox key funds itself from the world with 100,000 USDT, 1 BTC and 10 ETH, once per 24 hours. It is a signed call like any other trading endpoint, using the same example secret shown above. Its own signed bytes:</p>
+        <div class="block"><pre><code>1767225601000
+POST
+/v1/exchange/faucet
+{}</code></pre></div>
         <div class="block"><pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/exchange/faucet \
   -H "Content-Type: application/json" \
   -H "X-Plutus-Key-Id: key_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a" \
@@ -362,7 +372,9 @@ curl -s -X POST https://plutus-ten-eta.vercel.app/v1/exchange/orders \
               <tr><td>Endpoint weight</td><td>1,200 per minute per key</td></tr>
               <tr><td>Order placement</td><td>capped separately at 10 per second per key</td></tr>
               <tr><td>Faucet</td><td>once per 24 hours per sandbox key</td></tr>
-              <tr><td>Public market data reads</td><td>cached 2 seconds, weight charged per address</td></tr>
+              <tr><td>Markets list</td><td>free, no weight; cached 2 seconds</td></tr>
+              <tr><td>Book, trades, ticker</td><td>5 each, charged per address; cached 2 seconds</td></tr>
+              <tr><td>Candles</td><td>10, charged per address; cached 2 seconds</td></tr>
               <tr><td>Concurrent streams</td><td>10 per address</td></tr>
               <tr><td>Public exchange verify</td><td>2 per minute per address</td></tr>
             </tbody>
