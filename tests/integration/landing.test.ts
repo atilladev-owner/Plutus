@@ -90,4 +90,15 @@ describe("landing", () => {
     expect(js.status).toBe(200);
     expect(js.headers["content-type"]).toMatch(/javascript/);
   });
+
+  it("serves favicon.svg as a static file, linked from every page", async () => {
+    const { app } = await makeTestApp();
+    const icon = await request(app).get("/favicon.svg");
+    expect(icon.status).toBe(200);
+    expect(icon.headers["content-type"]).toContain("svg");
+    for (const route of Object.keys(PAGE_FILES)) {
+      const res = await request(app).get(route);
+      expect(res.text, `${route} should link the favicon`).toContain('href="/favicon.svg"');
+    }
+  });
 });

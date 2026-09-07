@@ -898,6 +898,8 @@ section:last-of-type { border-bottom: none; }
   font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
+/* A stat's own failed read, independent of whether the book beside it read fine. */
+.ticker-stat .ticker-stat-value.value-warn { color: var(--warn); font-size: var(--text-14); }
 
 .exchange-grid {
   display: grid;

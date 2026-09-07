@@ -444,29 +444,47 @@
     }
     var width = 640;
     var height = 260;
-    var marginLeft = 68;
+    // Wide enough for a six figure whole number plus its fraction ("100,223.32"), the
+    // longest a grid label plausibly gets, right anchored 8px in from this margin's edge.
+    var marginLeft = 96;
     var marginRight = 12;
-    var marginTop = 12;
+    // Room for the one axis title above the plot: a unit appended to all five grid labels
+    // was wide enough, past "80,223.32 USDT", to clip past the SVG's own left edge under
+    // text-anchor="end", so the unit is named once here instead.
+    var marginTop = 26;
     var marginBottom = 12;
     var chartWidth = width - marginLeft - marginRight;
     var chartHeight = height - marginTop - marginBottom;
-    var span = maxPrice - minPrice;
-    var spanNumber = span === 0n ? 1 : Number(span);
+    var rawSpan = maxPrice - minPrice;
+    // A zero price range (every candle at the same price, most often because there is only
+    // one candle so far) would otherwise draw all five grid lines on top of one another at
+    // the same value: padded half a percent of the price each side purely for the axis, so
+    // the lines read as distinct prices around the flat one rather than five copies of it.
+    // The candle body itself still draws from the real, unpadded price.
+    var flat = rawSpan === 0n;
+    var pad = flat ? (maxPrice / 200n === 0n ? 1n : maxPrice / 200n) : 0n;
+    var axisMax = maxPrice + pad;
+    var axisMin = minPrice - pad;
+    var span = axisMax - axisMin;
+    var spanNumber = Number(span);
 
     function yFor(priceStr) {
-      var offset = Number(maxPrice - BigInt(priceStr));
+      var offset = Number(axisMax - BigInt(priceStr));
       return marginTop + (offset / spanNumber) * chartHeight;
     }
 
     var count = ordered.length;
     var slot = chartWidth / count;
     var bodyWidth = slot * 0.6;
+    var quoteUnit = quoteOf(market);
 
-    var gridLines = "";
+    // The axis title, named once, rather than repeating the unit on all five grid labels
+    // (which clipped past the chart's left edge on a wide price: see marginTop above).
+    var gridLines = '<text x="' + marginLeft + '" y="16" style="font-family: var(--font-mono); font-size: 11px; fill: var(--muted);">Price, ' + quoteUnit + '</text>';
     var gridSteps = 4;
     for (var g = 0; g <= gridSteps; g += 1) {
       var gy = marginTop + (g / gridSteps) * chartHeight;
-      var priceAtLine = maxPrice - (span * BigInt(g)) / BigInt(gridSteps);
+      var priceAtLine = axisMax - (span * BigInt(g)) / BigInt(gridSteps);
       gridLines += '<line x1="' + marginLeft + '" y1="' + gy + '" x2="' + (width - marginRight) + '" y2="' + gy + '" style="stroke: var(--data-2); stroke-width: 1;"></line>';
       gridLines += '<text x="' + (marginLeft - 8) + '" y="' + (gy + 4) + '" text-anchor="end" style="font-family: var(--font-mono); font-size: 11px; fill: var(--muted);">' + formatMinor(priceAtLine.toString(), decimals.quote) + '</text>';
     }
@@ -487,14 +505,19 @@
       bars += '<rect x="' + x + '" y="' + top + '" width="' + bodyWidth + '" height="' + bodyHeight + '" style="fill: ' + color + ';"></rect>';
     });
 
-    var quote = quoteOf(market);
     var svg = '<svg class="candles-chart" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-labelledby="candles-title" xmlns="http://www.w3.org/2000/svg">'
       + '<title id="candles-title">One minute candles for ' + market + ', the most recent ' + count + ' minutes</title>'
       + gridLines + bars
       + '</svg>';
-    var caption = '<figcaption class="diagram-caption">' + count + ' one minute candles for ' + market
-      + ', accent for up and ink for down, ranging from ' + formatMinor(minPrice.toString(), decimals.quote)
-      + ' to ' + formatMinor(maxPrice.toString(), decimals.quote) + ' ' + quote + '.</figcaption>';
+    // A truly flat range (most often exactly one candle so far) reads oddly as "ranging
+    // from X to X"; said plainly instead, at the one price every candle here actually
+    // traded at.
+    var caption = flat
+      ? '<figcaption class="diagram-caption">One candle so far for ' + market + ', at '
+        + formatMinor(maxPrice.toString(), decimals.quote) + ' ' + quoteUnit + '.</figcaption>'
+      : '<figcaption class="diagram-caption">' + count + ' one minute candles for ' + market
+        + ', accent for up and ink for down, ranging from ' + formatMinor(minPrice.toString(), decimals.quote)
+        + ' to ' + formatMinor(maxPrice.toString(), decimals.quote) + ' ' + quoteUnit + '.</figcaption>';
     figure.innerHTML = svg + caption;
   }
 
@@ -542,6 +565,14 @@
       if (bidRows) bidRows.innerHTML = skeletonRows(10);
       if (askRows) askRows.innerHTML = skeletonRows(10);
       if (tradesBody) tradesBody.innerHTML = skeletonTradeRows(6);
+      // Every one of these carries a static "Needs JavaScript" default in the markup, for
+      // the no script case: with the script running, that text must never be visible even
+      // for a moment, so all five swap to a skeleton here, synchronously, before the first
+      // fetch this module makes.
+      [statLast, statHigh, statLow, statBaseVol, statQuoteVol].forEach(function (el) {
+        if (el) { el.innerHTML = '<span class="skel skel-line"></span>'; el.classList.remove("value-warn"); }
+      });
+      if (candlesFigure) candlesFigure.innerHTML = '<p class="desk-empty">Reading candles</p>';
       setBoardStatus("loading", "Reading the book");
     }
 
@@ -554,14 +585,30 @@
       setBoardStatus("warn", "Read failed");
       if (bidRows) bidRows.innerHTML = '<p class="desk-failed">Could not read the book: ' + reason + '.</p>';
       if (askRows) askRows.innerHTML = "";
+    }
+
+    // Ticker and trades each fail on their own terms, in --warn with the reason, exactly
+    // like the book above: a book read succeeding does not mean the ticker or the trades
+    // read did too, so each gets its own failed state rather than silently keeping
+    // whatever it last showed.
+    function renderTickerFailure(reason) {
+      var text = "Could not read: " + reason + ".";
       [statLast, statHigh, statLow, statBaseVol, statQuoteVol].forEach(function (el) {
-        if (el) el.textContent = "Unavailable";
+        if (el) { el.textContent = text; el.classList.add("value-warn"); }
       });
+    }
+
+    function renderTradesFailure(reason) {
+      if (!tradesBody) return;
+      tradesBody.innerHTML = '<tr class="trade-row"><td colspan="4" class="desk-failed">Could not read trades: ' + reason + '.</td></tr>';
     }
 
     function renderTicker(ticker, decimals, market) {
       var quote = quoteOf(market);
       var base = baseOf(market);
+      [statLast, statHigh, statLow, statBaseVol, statQuoteVol].forEach(function (el) {
+        if (el) el.classList.remove("value-warn");
+      });
       if (statLast) statLast.textContent = ticker.last === null ? "No trades yet" : formatMinor(ticker.last, decimals.quote) + " " + quote;
       if (statHigh) statHigh.textContent = ticker.high_24h === null ? "No trades yet" : formatMinor(ticker.high_24h, decimals.quote) + " " + quote;
       if (statLow) statLow.textContent = ticker.low_24h === null ? "No trades yet" : formatMinor(ticker.low_24h, decimals.quote) + " " + quote;
@@ -600,20 +647,27 @@
         var bookRes = results[0];
         var tickerRes = results[1];
         var tradesRes = results[2];
+        // Ticker and trades read and fail independently of the book: a book read
+        // succeeding says nothing about whether the other two did.
+        if (tickerRes.ok && tickerRes.body) renderTicker(tickerRes.body, decimals, market);
+        else renderTickerFailure("the server answered " + tickerRes.status);
+        if (tradesRes.ok && tradesRes.body) renderTrades(tradesRes.body.data, decimals, market);
+        else renderTradesFailure("the server answered " + tradesRes.status);
         if (!bookRes.ok || !bookRes.body) {
           renderBoardFailure("the server answered " + bookRes.status);
           return;
         }
         bidMap = renderLevels(bidRows, bookRes.body.bids, decimals.base, decimals.quote, haveRead ? bidMap : null, flash);
         askMap = renderLevels(askRows, bookRes.body.asks, decimals.base, decimals.quote, haveRead ? askMap : null, flash);
-        if (tickerRes.ok && tickerRes.body) renderTicker(tickerRes.body, decimals, market);
-        if (tradesRes.ok && tradesRes.body) renderTrades(tradesRes.body.data, decimals, market);
         haveRead = true;
         lastReadAt = Date.now();
         setBoardStatus("ok", "Live");
         updateBoardTime();
       }, function (err) {
-        renderBoardFailure(err && err.message ? err.message : "a network error");
+        var reason = err && err.message ? err.message : "a network error";
+        renderBoardFailure(reason);
+        renderTickerFailure(reason);
+        renderTradesFailure(reason);
       });
     }
 
@@ -695,7 +749,6 @@
       askMap = null;
       haveRead = false;
       showBoardSkeleton();
-      if (candlesFigure) candlesFigure.innerHTML = '<p class="desk-empty">Reading candles</p>';
       pollBoard();
       pollCandles();
       updateStreamCode();

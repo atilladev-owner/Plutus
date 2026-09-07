@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Plutus">
+<title>Plutus</title>
+<style>
+  text { fill: #1C6E4A; }
+  @media (prefers-color-scheme: dark) {
+    text { fill: #7CC7A0; }
+  }
+</style>
+<text x="16" y="25" text-anchor="middle" font-family="Outfit, system-ui, -apple-system, 'Segoe UI', sans-serif" font-weight="700" font-size="26">p</text>
+</svg>
