@@ -1,10 +1,8 @@
 # How Plutus works
 
-This is written for one reader: the owner, looking at his own project some months from
-now and needing to remember why it works the way it does. It is not marketing and it is
-not for a recruiter. Every term gets one plain line the first time it shows up, because
-the whole point of this document is that nothing in it should need a second document to
-understand.
+A plain words tour of Plutus: what each part does, why it is built that way, how to change
+it safely, and what building it taught. Every term gets one plain line the first time it
+shows up, so nothing here should need a second document to understand.
 
 ## What this is
 
