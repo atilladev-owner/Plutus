@@ -77,6 +77,16 @@
     });
   }
 
+  /* ---- Skip link target on /docs: the six plain pages set tabindex="-1" directly on
+     #main in their own markup, but Scalar's mount point (#app) is rendered by the shared
+     docs shell, so the same "you are now here" focus target is added here instead. A no-op
+     on the six plain pages, which have no #app. */
+
+  function initSkipLinkTarget() {
+    var app = document.getElementById("app");
+    if (app && !app.hasAttribute("tabindex")) app.setAttribute("tabindex", "-1");
+  }
+
   /* ---- In page links: replace the address instead of pushing a history entry, so the
      back button leaves the page rather than walking a stack of section jumps. */
 
@@ -289,6 +299,7 @@
     var haveRead = false;
     var lastReadAt = null;
     var pollTimer = null;
+    var relativeTimer = null;
 
     function setStatus(state, text) {
       if (statusDot) statusDot.setAttribute("data-state", state);
@@ -361,21 +372,31 @@
       checkVerify("/v1/exchange/verify").then(renderVerify);
     }
 
+    function startTimers() {
+      if (!relativeTimer) relativeTimer = window.setInterval(updateRelativeTime, 1000);
+      if (!pollTimer) {
+        pollTimer = window.setInterval(function () {
+          if (document.visibilityState === "visible") poll();
+        }, 5000);
+      }
+    }
+
     showSkeleton();
     poll();
     verifyOnce();
-
-    window.setInterval(updateRelativeTime, 1000);
-    pollTimer = window.setInterval(function () {
-      if (document.visibilityState === "visible") poll();
-    }, 5000);
+    startTimers();
 
     document.addEventListener("visibilitychange", function () {
       if (document.visibilityState === "visible") poll();
     });
 
     window.addEventListener("pagehide", function () {
-      if (pollTimer) window.clearInterval(pollTimer);
+      if (pollTimer) { window.clearInterval(pollTimer); pollTimer = null; }
+      if (relativeTimer) { window.clearInterval(relativeTimer); relativeTimer = null; }
+    });
+
+    window.addEventListener("pageshow", function () {
+      startTimers();
     });
   }
 
@@ -455,13 +476,15 @@
     var marginBottom = 12;
     var chartWidth = width - marginLeft - marginRight;
     var chartHeight = height - marginTop - marginBottom;
-    var rawSpan = maxPrice - minPrice;
     // A zero price range (every candle at the same price, most often because there is only
     // one candle so far) would otherwise draw all five grid lines on top of one another at
     // the same value: padded half a percent of the price each side purely for the axis, so
     // the lines read as distinct prices around the flat one rather than five copies of it.
-    // The candle body itself still draws from the real, unpadded price.
-    var flat = rawSpan === 0n;
+    // The candle body itself still draws from the real, unpadded price. A span too small to
+    // change the market's own formatted string reads exactly the same way to a viewer (five
+    // grid lines all labelled the identical price), so it is treated as flat too, rather
+    // than only an exact zero span.
+    var flat = formatMinor(minPrice.toString(), decimals.quote) === formatMinor(maxPrice.toString(), decimals.quote);
     var pad = flat ? (maxPrice / 200n === 0n ? 1n : maxPrice / 200n) : 0n;
     var axisMax = maxPrice + pad;
     var axisMin = minPrice - pad;
@@ -553,6 +576,7 @@
     var haveRead = false;
     var lastReadAt = null;
     var pollTimer = null;
+    var boardTimeTimer = null;
     var eventSource = null;
     var eventsReceived = 0;
 
@@ -762,24 +786,34 @@
       });
     });
 
+    function startTimers() {
+      if (!boardTimeTimer) boardTimeTimer = window.setInterval(updateBoardTime, 1000);
+      if (!pollTimer) {
+        pollTimer = window.setInterval(function () {
+          if (document.visibilityState === "visible") { pollBoard(); pollCandles(); }
+        }, 5000);
+      }
+    }
+
     showBoardSkeleton();
     pollBoard();
     pollCandles();
     updateStreamCode();
     openStream();
-
-    window.setInterval(updateBoardTime, 1000);
-    pollTimer = window.setInterval(function () {
-      if (document.visibilityState === "visible") { pollBoard(); pollCandles(); }
-    }, 5000);
+    startTimers();
 
     document.addEventListener("visibilitychange", function () {
       if (document.visibilityState === "visible") { pollBoard(); pollCandles(); }
     });
 
     window.addEventListener("pagehide", function () {
-      if (pollTimer) window.clearInterval(pollTimer);
+      if (pollTimer) { window.clearInterval(pollTimer); pollTimer = null; }
+      if (boardTimeTimer) { window.clearInterval(boardTimeTimer); boardTimeTimer = null; }
       closeStream();
+    });
+
+    window.addEventListener("pageshow", function () {
+      startTimers();
     });
   }
 
@@ -790,6 +824,7 @@
 
   ready(function () {
     initThemeToggle();
+    initSkipLinkTarget();
     initInPageLinks();
     initCopyButtons();
     initLiveDesk();

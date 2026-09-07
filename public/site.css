@@ -125,6 +125,11 @@ html { background: var(--ground); scroll-behavior: smooth; -webkit-text-size-adj
 }
 body { margin: 0; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-x: hidden; }
 img, svg { max-width: 100%; display: block; }
+/* An author display rule, even this generic a selector, still outranks the UA stylesheet's
+   own [hidden] { display: none }, since author styles always win over user agent styles
+   regardless of specificity: without this, every hidden theme-toggle icon rendered anyway,
+   all three stacked in the same button. */
+svg[hidden] { display: none; }
 main { display: block; }
 
 /* Headings. */
@@ -274,6 +279,11 @@ button:focus-visible, [tabindex]:focus-visible {
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
+  /* A visible fade at the trailing edge below 720px, where the nav row scrolls inside its
+     own container: the same affordance as .codeblock-scroll, so a link cut short by the
+     edge reads as "more to scroll to." */
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(to right, black calc(100% - 24px), transparent 100%);
 }
 .topbar-nav {
   display: flex;
@@ -388,15 +398,27 @@ button:focus-visible, [tabindex]:focus-visible {
 .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
 .btn-ghost:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
-/* Code blocks. */
+/* Code blocks. The block itself is the non-scrolling frame: position: relative for the
+   copy control, and, only where a copy control is actually present, real padding reserved
+   on the right for it so the button sits in its own gutter rather than over content at any
+   scroll position. The horizontal scroll lives on the inner .codeblock-scroll wrapper
+   instead, so the button is never part of the scrolling box it used to share. */
 .codeblock {
   position: relative;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  padding: var(--sp-16) var(--sp-16);
+  padding: var(--sp-16);
   margin: 0 0 var(--sp-16);
+}
+.codeblock:has(.copy-btn) { padding-right: 128px; }
+.codeblock-scroll {
   overflow-x: auto;
+  /* A visible fade at the trailing edge, so a line cut short by the scroll container reads
+     as "more to scroll to" rather than simply clipped. Harmless on a line that already
+     fits: with nothing drawn in that last strip, the mask has nothing to fade. */
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+  mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
 }
 .codeblock pre {
   margin: 0;
@@ -405,15 +427,14 @@ button:focus-visible, [tabindex]:focus-visible {
   line-height: 1.7;
   white-space: pre;
   color: var(--ink);
-  /* Clears the copy control, sized for its 20px icon, sitting above the top right corner. */
-  padding-right: 60px;
 }
 .codeblock code { background: none; border: none; padding: 0; border-radius: 0; font-size: inherit; }
 .codeblock .rem { color: var(--muted); }
 
 /* The copy control. Its icon is the same 20px as every other icon on the site; the
    control itself grew to hold that size comfortably rather than the icon shrinking to
-   fit a smaller button. */
+   fit a smaller button. Absolutely positioned inside .codeblock's own reserved gutter
+   (see .codeblock:has(.copy-btn) above), never inside the scrolling .codeblock-scroll. */
 .copy-btn {
   position: absolute;
   top: 10px;
@@ -686,10 +707,14 @@ section:last-of-type { border-bottom: none; }
   max-width: 60ch;
 }
 
-/* Two column explanation. */
+/* Two column explanation. The right column carries diagram 1, drawn at an 880 wide
+   viewBox with its text sized for a roughly 520px display width (see site.css's diagram
+   rules below); a 520px floor on this track keeps that assumption true at every width the
+   two column layout is actually shown at, rather than letting the diagram shrink past the
+   point its own text was sized for. */
 .explain-grid {
   display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  grid-template-columns: minmax(0, 0.85fr) minmax(520px, 1.15fr);
   gap: var(--sp-48);
   align-items: start;
 }
@@ -698,6 +723,16 @@ section:last-of-type { border-bottom: none; }
 
 @media (max-width: 900px) {
   .explain-grid { grid-template-columns: minmax(0, 1fr); gap: var(--sp-32); }
+  /* Below 900px the grid stacks, so diagram 1 (an 880 wide viewBox) is no longer sharing a
+     row with .explain-copy; it now scales against .wrap's own width instead, down to 358px
+     at the narrowest supported width (390px, the 16px gutter). Its text sizes are custom
+     properties precisely so this one breakpoint can raise them for that much smaller
+     display width, rather than leaving the desktop-tuned size to shrink further with it. */
+  #how-it-works .diagram svg {
+    --d1-lg: 39px;
+    --d1-md: 35px;
+    --d1-sm: 32px;
+  }
 }
 
 /* Use cases, asymmetric grid. At least two tiles carry a tint or a small diagram. */
@@ -1050,6 +1085,17 @@ section:last-of-type { border-bottom: none; }
 }
 .verify-panel-body { font-size: 13px; color: var(--muted); }
 .verify-panel-body .mono { color: var(--ink); }
+
+/* Touch targets. pointer: coarse only, so a touchscreen gets a real 44px hit area on the
+   theme toggle, the copy control and the market switcher, without inflating any of the
+   three for a mouse or trackpad: the padding each already carries is untouched, this only
+   adds a floor beneath it. */
+@media (pointer: coarse) {
+  .theme-toggle, .copy-btn, .market-switch button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
 
 /* Reduced motion collapses every transition and animation to instant, and disables the
    row highlight and smooth in page scrolling entirely. */

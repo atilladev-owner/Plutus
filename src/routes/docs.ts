@@ -125,6 +125,18 @@ const SCALAR_CUSTOM_CSS = `
   --scalar-sidebar-search-background: #FBFAF7;
   --scalar-sidebar-search-border-color: #DCE1DA;
   --scalar-sidebar-search-color: #1F2A24;
+  /* HTTP method and status colour ramp, mapped off the site's own tokens rather than
+     Scalar's default blue/orange/red/purple (see the task report for the contrast numbers
+     behind each choice). GET reads as accent (the site's one deep green), POST as
+     accent-deep, PATCH as muted, DELETE and every 4xx/5xx status as warn (the one token
+     already carrying a "something needs attention" meaning); PUT and OPTIONS are not used
+     by this API and fall back to ink. */
+  --scalar-color-blue: #1C6E4A;
+  --scalar-color-green: #145238;
+  --scalar-color-yellow: #5D6B63;
+  --scalar-color-red: #8A5A2B;
+  --scalar-color-orange: #1F2A24;
+  --scalar-color-purple: #1F2A24;
 }
 .dark-mode {
   --scalar-color-1: #EEF2EE;
@@ -147,6 +159,13 @@ const SCALAR_CUSTOM_CSS = `
   --scalar-sidebar-search-background: #141915;
   --scalar-sidebar-search-border-color: #2A332C;
   --scalar-sidebar-search-color: #EEF2EE;
+  /* Same ramp, dark values. */
+  --scalar-color-blue: #7CC7A0;
+  --scalar-color-green: #A3DABB;
+  --scalar-color-yellow: #93AC9F;
+  --scalar-color-red: #D9A66A;
+  --scalar-color-orange: #EEF2EE;
+  --scalar-color-purple: #EEF2EE;
 }
 .light-mode, .dark-mode {
   --scalar-font: var(--font-body, "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif);
@@ -188,16 +207,43 @@ body {
 }
 `;
 
+/**
+ * Scalar's own promotional chrome, turned off through the config surface the loaded
+ * @scalar/api-reference bundle actually reads (confirmed by inspecting that bundle, since
+ * client-side-rendering only emits a script tag that loads and configures it from a CDN at
+ * runtime; there is no local copy to inspect otherwise):
+ * - showDeveloperTools: "never" empties the whole top right toolbar header (Developer
+ *   Tools, Configure, Share, Deploy) outright rather than just hiding it with CSS; the
+ *   bundle's own default is "localhost", which is exactly why it renders in local dev and
+ *   in the audit's screenshots but not in most production hosting.
+ * - mcp.disabled hides "Generate MCP".
+ * - agent.disabled hides "Ask AI", both the sidebar button (next to Search) and the chat
+ *   panel it opens.
+ * None of these touch the "Powered by Scalar" credit, which lives under a separate,
+ * unrelated footer.poweredByScalar localization key the bundle always renders.
+ *
+ * Kept as its own const, and not typed against AnyApiReferenceConfiguration, so it can carry
+ * agent.disabled: that field is read by the loaded bundle (confirmed against that bundle
+ * directly) but is newer than the agent field the locally vendored @scalar/types 0.18.3
+ * declares, so an inline literal typed against that schema would reject it as an excess
+ * property. Passed by reference into renderApiReference below instead of inline, which
+ * reaches the same runtime config object without tripping that check.
+ */
+const SCALAR_CONFIG = {
+  url: "/openapi.json",
+  _integration: "express",
+  theme: "none",
+  withDefaultFonts: false,
+  customCss: SCALAR_CUSTOM_CSS,
+  showDeveloperTools: "never",
+  mcp: { disabled: true },
+  agent: { disabled: true },
+} as const;
+
 /** Mounted separately because Scalar is a rendered page, not a route with a schema. */
 export function mountDocs(app: Express, _deps: AppDeps): void {
   const html = renderApiReference({
-    config: {
-      url: "/openapi.json",
-      _integration: "express",
-      theme: "none",
-      withDefaultFonts: false,
-      customCss: SCALAR_CUSTOM_CSS,
-    },
+    config: SCALAR_CONFIG,
     pageTitle: "Plutus API",
   })
     .replace("<html>", '<html lang="en">')

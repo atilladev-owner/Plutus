@@ -58,7 +58,7 @@
   </div>
 </header>
 
-<main id="main" class="page-main">
+<main id="main" class="page-main" tabindex="-1">
 
   <section class="page-intro">
     <div class="wrap">
@@ -81,7 +81,8 @@
             <h3>Mint a key</h3>
             <p>No signup. The secret is shown exactly once, in this response.</p>
             <div class="codeblock">
-              <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/keys</code></pre>
+              <div class="codeblock-scroll"><pre><code>curl -s -X POST \
+  https://plutus-ten-eta.vercel.app/v1/keys</code></pre></div>
               <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/keys">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
@@ -99,10 +100,11 @@
             <h3>Open a ledger</h3>
             <p>Save the key as <code>$KEY</code> and the ledger id from this response as <code>$LEDGER</code>.</p>
             <div class="codeblock">
-              <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers \
+              <div class="codeblock-scroll"><pre><code>curl -s -X POST \
+  https://plutus-ten-eta.vercel.app/v1/ledgers \
   -H "Authorization: Bearer $KEY" \
   -H "Content-Type: application/json" \
-  -d '{"name":"shop"}'</code></pre>
+  -d '{"name":"shop"}'</code></pre></div>
               <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -d '{&quot;name&quot;:&quot;shop&quot;}'">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
@@ -120,11 +122,12 @@
             <h3>Move money</h3>
             <p>A world account is created lazily the first time an asset is used. This funds a till account from the world, then between accounts the same way.</p>
             <div class="codeblock">
-              <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers \
+              <div class="codeblock-scroll"><pre><code>curl -s -X POST \
+  https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers \
   -H "Authorization: Bearer $KEY" \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: fund-1" \
-  -d '{"legs":[{"from":"world:GHS","to":"'$TILL'","asset":"GHS","amount":"125000"}]}'</code></pre>
+  -d '{"legs":[{"from":"world:GHS","to":"'$TILL'","asset":"GHS","amount":"125000"}]}'</code></pre></div>
               <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -H &quot;Idempotency-Key: fund-1&quot; -d '{&quot;legs&quot;:[{&quot;from&quot;:&quot;world:GHS&quot;,&quot;to&quot;:&quot;'$TILL'&quot;,&quot;asset&quot;:&quot;GHS&quot;,&quot;amount&quot;:&quot;125000&quot;}]}'">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
@@ -142,8 +145,9 @@
             <h3>Verify</h3>
             <p>Recomputes the whole hash chain from the first entry and proves every asset sums to zero. A stranger can run this without ever holding a key to someone else's ledger, since a public key still only reads its own.</p>
             <div class="codeblock">
-              <pre><code>curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/verify \
-  -H "Authorization: Bearer $KEY"</code></pre>
+              <div class="codeblock-scroll"><pre><code>curl -s \
+  https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/verify \
+  -H "Authorization: Bearer $KEY"</code></pre></div>
               <button type="button" class="copy-btn" data-copy="curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/verify -H &quot;Authorization: Bearer $KEY&quot;">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
@@ -172,9 +176,9 @@
             <h3>Faucet</h3>
             <p>Funds the caller's sandbox exchange wallet from the world: 100,000 USDT, 1 BTC and 10 ETH, once per 24 hours per key. This call is itself signed, so it needs the signing step below before it can actually be sent; it is placed first here because it is the first thing a trading key does.</p>
             <div class="codeblock">
-              <pre><code>POST /v1/exchange/faucet
+              <div class="codeblock-scroll"><pre><code>POST /v1/exchange/faucet
 Content-Type: application/json
-X-Plutus-Key-Id, X-Plutus-Timestamp, X-Plutus-Recv-Window, X-Plutus-Signature</code></pre>
+X-Plutus-Key-Id, X-Plutus-Timestamp, X-Plutus-Recv-Window, X-Plutus-Signature</code></pre></div>
               <button type="button" class="copy-btn" data-copy="POST /v1/exchange/faucet&#10;Content-Type: application/json&#10;X-Plutus-Key-Id, X-Plutus-Timestamp, X-Plutus-Recv-Window, X-Plutus-Signature">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
@@ -198,10 +202,10 @@ X-Plutus-Key-Id, X-Plutus-Timestamp, X-Plutus-Recv-Window, X-Plutus-Signature</c
             </div>
             <p>The exact bytes HMAC SHA256 signs, keyed by the SHA256 digest of that secret, one line for the timestamp, the method, the path and the body, with no trailing newline after the body:</p>
             <div class="codeblock">
-              <pre><code>1767225600000
+              <div class="codeblock-scroll"><pre><code>1767225600000
 POST
 /v1/exchange/orders
-{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000","client_order_id":"readme-worked-example"}</code></pre>
+{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000","client_order_id":"readme-worked-example"}</code></pre></div>
               <button type="button" class="copy-btn" data-copy="1767225600000&#10;POST&#10;/v1/exchange/orders&#10;{&quot;market&quot;:&quot;BTC-USDT&quot;,&quot;side&quot;:&quot;buy&quot;,&quot;type&quot;:&quot;limit&quot;,&quot;price&quot;:&quot;6000000000&quot;,&quot;quantity&quot;:&quot;100000&quot;,&quot;client_order_id&quot;:&quot;readme-worked-example&quot;}">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
@@ -219,14 +223,15 @@ POST
             <h3>Place</h3>
             <p>The headers computed in the step above, sent with the exact body they were computed over. <code>client_order_id</code> travels in the body: a placement needs it, or an <code>Idempotency-Key</code> header, or the server refuses it named <code>validation_failed</code>.</p>
             <div class="codeblock">
-              <pre><code>BODY='{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000","client_order_id":"readme-worked-example"}'
-curl -s -X POST https://plutus-ten-eta.vercel.app/v1/exchange/orders \
+              <div class="codeblock-scroll"><pre><code>BODY='{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000","client_order_id":"readme-worked-example"}'
+curl -s -X POST \
+  https://plutus-ten-eta.vercel.app/v1/exchange/orders \
   -H "Content-Type: application/json" \
   -H "X-Plutus-Key-Id: key_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a" \
   -H "X-Plutus-Timestamp: 1767225600000" \
   -H "X-Plutus-Recv-Window: 5000" \
   -H "X-Plutus-Signature: ee35d7b3fbfbd93a8fcb5048280505d674ad0432435614ad056d50edbdee0832" \
-  -d "$BODY"</code></pre>
+  -d "$BODY"</code></pre></div>
               <button type="button" class="copy-btn" data-copy="BODY='{&quot;market&quot;:&quot;BTC-USDT&quot;,&quot;side&quot;:&quot;buy&quot;,&quot;type&quot;:&quot;limit&quot;,&quot;price&quot;:&quot;6000000000&quot;,&quot;quantity&quot;:&quot;100000&quot;,&quot;client_order_id&quot;:&quot;readme-worked-example&quot;}'&#10;curl -s -X POST https://plutus-ten-eta.vercel.app/v1/exchange/orders -H &quot;Content-Type: application/json&quot; -H &quot;X-Plutus-Key-Id: key_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a&quot; -H &quot;X-Plutus-Timestamp: 1767225600000&quot; -H &quot;X-Plutus-Recv-Window: 5000&quot; -H &quot;X-Plutus-Signature: ee35d7b3fbfbd93a8fcb5048280505d674ad0432435614ad056d50edbdee0832&quot; -d &quot;$BODY&quot;">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
@@ -245,10 +250,11 @@ curl -s -X POST https://plutus-ten-eta.vercel.app/v1/exchange/orders \
             <h3>Read</h3>
             <p>Reading is signed the same way as placing, over an empty body. This reads the order back by the id the placement returned.</p>
             <div class="codeblock">
-              <pre><code>curl -s https://plutus-ten-eta.vercel.app/v1/exchange/orders/$ORDER \
+              <div class="codeblock-scroll"><pre><code>curl -s \
+  https://plutus-ten-eta.vercel.app/v1/exchange/orders/$ORDER \
   -H "X-Plutus-Key-Id: $KEY_ID" \
   -H "X-Plutus-Timestamp: $TIMESTAMP" \
-  -H "X-Plutus-Signature: $SIGNATURE"</code></pre>
+  -H "X-Plutus-Signature: $SIGNATURE"</code></pre></div>
               <button type="button" class="copy-btn" data-copy="curl -s https://plutus-ten-eta.vercel.app/v1/exchange/orders/$ORDER -H &quot;X-Plutus-Key-Id: $KEY_ID&quot; -H &quot;X-Plutus-Timestamp: $TIMESTAMP&quot; -H &quot;X-Plutus-Signature: $SIGNATURE&quot;">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>

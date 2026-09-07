@@ -58,7 +58,7 @@
   </div>
 </header>
 
-<main id="main" class="page-main">
+<main id="main" class="page-main" tabindex="-1">
 
   <section class="page-intro">
     <div class="wrap">
@@ -157,7 +157,7 @@
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>When</th><th>Price</th><th>Quantity</th><th>Notional</th></tr>
+              <tr><th scope="col">When</th><th scope="col">Price</th><th scope="col">Quantity</th><th scope="col">Notional</th></tr>
             </thead>
             <tbody data-role="trades-body">
               <tr class="trade-row"><td colspan="4">Needs JavaScript enabled.</td></tr>
@@ -178,12 +178,12 @@
         <p class="stream-counter-label">Events received</p>
         <p class="stream-counter mono" data-role="stream-count">0</p>
         <div class="codeblock">
-          <pre><code data-role="stream-code">const stream = new EventSource(
+          <div class="codeblock-scroll"><pre><code data-role="stream-code">const stream = new EventSource(
   "/v1/exchange/stream?channels=book:BTC-USDT,trades:BTC-USDT&since=0"
 );
 stream.onmessage = (event) => {
   const { channel, seq, data } = JSON.parse(event.data);
-};</code></pre>
+};</code></pre></div>
           <button type="button" class="copy-btn" data-role="stream-copy" data-copy="const stream = new EventSource(&quot;/v1/exchange/stream?channels=book:BTC-USDT,trades:BTC-USDT&amp;since=0&quot;);&#10;stream.onmessage = (event) => {&#10;  const { channel, seq, data } = JSON.parse(event.data);&#10;};">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>

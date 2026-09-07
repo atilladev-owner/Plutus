@@ -58,7 +58,7 @@
   </div>
 </header>
 
-<main id="main" class="page-main">
+<main id="main" class="page-main" tabindex="-1">
 
   <section class="hero">
     <div class="wrap hero-grid">
@@ -139,28 +139,28 @@
             </marker>
           </defs>
           <rect x="60" y="60" width="230" height="96" rx="10" style="fill: var(--panel); stroke: var(--line); stroke-width: 1;"></rect>
-          <text x="175" y="100" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 16px; fill: var(--ink);">world:GHS</text>
-          <text x="175" y="124" text-anchor="middle" style="font-family: var(--font-body); font-size: 13px; fill: var(--muted);">source leg</text>
+          <text x="175" y="102" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: var(--d1-lg, 27px); fill: var(--ink);">world:GHS</text>
+          <text x="175" y="128" text-anchor="middle" style="font-family: var(--font-body); font-size: var(--d1-sm, 22px); fill: var(--muted);">source</text>
 
           <rect x="590" y="60" width="230" height="96" rx="10" style="fill: var(--panel); stroke: var(--line); stroke-width: 1;"></rect>
-          <text x="705" y="100" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 16px; fill: var(--ink);">till, GHS</text>
-          <text x="705" y="124" text-anchor="middle" style="font-family: var(--font-body); font-size: 13px; fill: var(--muted);">destination leg</text>
+          <text x="705" y="102" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: var(--d1-lg, 27px); fill: var(--ink);">till, GHS</text>
+          <text x="705" y="128" text-anchor="middle" style="font-family: var(--font-body); font-size: var(--d1-sm, 22px); fill: var(--muted);">destination</text>
 
           <line x1="290" y1="108" x2="580" y2="108" style="stroke: var(--accent); stroke-width: 2;" marker-end="url(#d1-arrow)"></line>
-          <text x="435" y="90" text-anchor="middle" style="font-family: var(--font-mono); font-size: 13px; fill: var(--accent);">125,000 minor units</text>
+          <text x="435" y="88" text-anchor="middle" style="font-family: var(--font-mono); font-size: var(--d1-sm, 22px); fill: var(--accent);">125,000 units</text>
 
           <line x1="435" y1="156" x2="435" y2="202" style="stroke: var(--data-2); stroke-width: 1.5;"></line>
 
           <rect x="255" y="202" width="360" height="92" rx="10" style="fill: var(--ground); stroke: var(--accent); stroke-width: 1.5;"></rect>
-          <text x="435" y="234" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 14px; fill: var(--ink);">journal entry number 482</text>
-          <text x="435" y="256" text-anchor="middle" style="font-family: var(--font-mono); font-size: 13px; fill: var(--muted);">hash of entry 481 plus this payload</text>
+          <text x="435" y="236" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: var(--d1-md, 24px); fill: var(--ink);">entry 482</text>
+          <text x="435" y="262" text-anchor="middle" style="font-family: var(--font-mono); font-size: var(--d1-sm, 22px); fill: var(--muted);">hash(481)+payload</text>
 
           <rect x="60" y="216" width="150" height="60" rx="8" style="fill: var(--data-1); stroke: var(--line); stroke-width: 1;"></rect>
-          <text x="135" y="250" text-anchor="middle" style="font-family: var(--font-mono); font-size: 13px; fill: var(--ink);">entry 481</text>
+          <text x="135" y="252" text-anchor="middle" style="font-family: var(--font-mono); font-size: var(--d1-sm, 22px); fill: var(--ink);">481</text>
           <line x1="210" y1="246" x2="255" y2="246" style="stroke: var(--data-2); stroke-width: 1.5; stroke-dasharray: 3 3;"></line>
 
           <rect x="670" y="216" width="150" height="60" rx="8" style="fill: var(--data-1); stroke: var(--line); stroke-width: 1; opacity: 0.6;"></rect>
-          <text x="745" y="250" text-anchor="middle" style="font-family: var(--font-mono); font-size: 13px; fill: var(--muted);">entry 483</text>
+          <text x="745" y="252" text-anchor="middle" style="font-family: var(--font-mono); font-size: var(--d1-sm, 22px); fill: var(--ink);">483</text>
           <line x1="615" y1="246" x2="670" y2="246" style="stroke: var(--data-2); stroke-width: 1.5; stroke-dasharray: 3 3;"></line>
         </svg>
         <figcaption class="diagram-caption">A transfer moves money between two accounts as legs, and the journal entry it appends carries the hash of the entry before it.</figcaption>
@@ -227,6 +227,7 @@
             <text x="72" y="10" style="font-family: var(--font-mono); font-size: 9px; fill: var(--muted);">captured</text>
             <text x="142" y="10" style="font-family: var(--font-mono); font-size: 9px; fill: var(--muted);">released</text>
           </svg>
+          <p class="diagram-caption">A tab's hold moves from opened to captured for what was owed, with the rest released in the same call.</p>
         </article>
 
         <article class="usecase usecase--tint">
@@ -256,7 +257,8 @@
           <p class="setup-num mono">01</p>
           <h3>Mint a key</h3>
           <div class="codeblock">
-            <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/keys</code></pre>
+            <div class="codeblock-scroll"><pre><code>curl -s -X POST \
+  https://plutus-ten-eta.vercel.app/v1/keys</code></pre></div>
             <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/keys">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
@@ -270,10 +272,11 @@
           <p class="setup-num mono">02</p>
           <h3>Open a ledger</h3>
           <div class="codeblock">
-            <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers \
+            <div class="codeblock-scroll"><pre><code>curl -s -X POST \
+  https://plutus-ten-eta.vercel.app/v1/ledgers \
   -H "Authorization: Bearer $KEY" \
   -H "Content-Type: application/json" \
-  -d '{"name":"shop"}'</code></pre>
+  -d '{"name":"shop"}'</code></pre></div>
             <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -d '{&quot;name&quot;:&quot;shop&quot;}'">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
@@ -287,11 +290,12 @@
           <p class="setup-num mono">03</p>
           <h3>Move money</h3>
           <div class="codeblock">
-            <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers \
+            <div class="codeblock-scroll"><pre><code>curl -s -X POST \
+  https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers \
   -H "Authorization: Bearer $KEY" \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: fund-1" \
-  -d '{"legs":[{"from":"world:GHS","to":"'$TILL'","asset":"GHS","amount":"125000"}]}'</code></pre>
+  -d '{"legs":[{"from":"world:GHS","to":"'$TILL'","asset":"GHS","amount":"125000"}]}'</code></pre></div>
               <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -H &quot;Idempotency-Key: fund-1&quot; -d '{&quot;legs&quot;:[{&quot;from&quot;:&quot;world:GHS&quot;,&quot;to&quot;:&quot;'$TILL'&quot;,&quot;asset&quot;:&quot;GHS&quot;,&quot;amount&quot;:&quot;125000&quot;}]}'">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>

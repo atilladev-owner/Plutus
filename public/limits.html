@@ -58,7 +58,7 @@
   </div>
 </header>
 
-<main id="main" class="page-main">
+<main id="main" class="page-main" tabindex="-1">
 
   <section class="page-intro">
     <div class="wrap">
@@ -74,7 +74,7 @@
         <p>Ceilings apply to sandbox keys and their ledgers. A ceiling hit is a 409 named <code>sandbox_limit_reached</code>, naming the ceiling. The exchange ledger and the house key are system owned and exempt.</p>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Ceiling</th><th>Value</th></tr></thead>
+            <thead><tr><th scope="col">Ceiling</th><th scope="col">Value</th></tr></thead>
             <tbody>
               <tr><td>Ledgers per key</td><td class="mono">10</td></tr>
               <tr><td>Accounts per ledger</td><td class="mono">50</td></tr>
@@ -94,7 +94,7 @@
         <p>Every response carries <code>RateLimit-Limit</code>, <code>RateLimit-Remaining</code> and <code>RateLimit-Reset</code>. A refusal is a 429 named <code>rate_limited</code> with <code>Retry-After</code> in seconds.</p>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Ceiling</th><th>Value</th></tr></thead>
+            <thead><tr><th scope="col">Ceiling</th><th scope="col">Value</th></tr></thead>
             <tbody>
               <tr><td>Endpoint weight</td><td class="mono">1,200 per minute per key</td></tr>
               <tr><td>Order placement</td><td class="mono">10 per second per key</td></tr>
@@ -120,7 +120,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Reason</th><th>Meaning</th></tr></thead>
+          <thead><tr><th scope="col">Reason</th><th scope="col">Meaning</th></tr></thead>
           <tbody>
             <tr><td class="mono">market_halted</td><td>the market is not accepting orders right now</td></tr>
             <tr><td class="mono">price_not_tick</td><td>the price is not a multiple of the market's tick size</td></tr>
@@ -164,8 +164,9 @@
         </div>
         <p class="verify-panel-body">Run with the key that owns it. Recomputes the whole hash chain from the first entry, replays every balance and held amount, and sums each asset.</p>
         <div class="codeblock">
-          <pre><code>curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/verify \
-  -H "Authorization: Bearer $KEY"</code></pre>
+          <div class="codeblock-scroll"><pre><code>curl -s \
+  https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/verify \
+  -H "Authorization: Bearer $KEY"</code></pre></div>
           <button type="button" class="copy-btn" data-copy="curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/verify -H &quot;Authorization: Bearer $KEY&quot;">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
@@ -176,7 +177,7 @@
         </div>
         <p class="verify-panel-body">The document shape, the same one the exchange panel reads:</p>
         <div class="codeblock">
-          <pre><code>{
+          <div class="codeblock-scroll"><pre><code>{
   "ok": true,
   "entries_checked": 1042,
   "first_bad_seq": null,
@@ -188,7 +189,7 @@
     { "asset": "USDT", "sum": "0" }
   ],
   "cached": false
-}</code></pre>
+}</code></pre></div>
         </div>
       </div>
     </div>
