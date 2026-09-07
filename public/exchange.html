@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exchange, Plutus</title>
+<meta name="description" content="The Plutus exchange, live: the order book ten levels a side, the last twenty trades, a candle chart, and the event stream, for BTC-USDT and ETH-USDT, no key required.">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700&family=Nunito:wght@400;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<!--
+  Icons on this page are inline SVG redrawn from Lucide (https://lucide.dev), used under the
+  MIT licence. Recoloured with currentColor, one stroke weight, each with a text label.
+-->
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="wordmark" href="/">plutus</a>
+    <div class="topbar-scroll">
+      <nav class="topbar-nav" aria-label="Site">
+        <a href="/">Home</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/exchange" aria-current="page">Exchange</a>
+        <a href="/use-cases">Use cases</a>
+        <a href="/set-up">Set up</a>
+        <a href="/limits">Limits</a>
+        <a href="/docs">Docs</a>
+      </nav>
+    </div>
+    <button type="button" class="theme-toggle" data-theme-toggle aria-label="Theme, currently System. Activate to change it.">
+      <svg data-theme-icon="system" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect width="20" height="14" x="2" y="3" rx="2"></rect>
+        <line x1="8" x2="16" y1="21" y2="21"></line>
+        <line x1="12" x2="12" y1="17" y2="21"></line>
+      </svg>
+      <svg data-theme-icon="light" hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4"></circle>
+        <path d="M12 2v2"></path>
+        <path d="M12 20v2"></path>
+        <path d="m4.93 4.93 1.41 1.41"></path>
+        <path d="m17.66 17.66 1.41 1.41"></path>
+        <path d="M2 12h2"></path>
+        <path d="M20 12h2"></path>
+        <path d="m6.34 17.66-1.41 1.41"></path>
+        <path d="m19.07 4.93-1.41 1.41"></path>
+      </svg>
+      <svg data-theme-icon="dark" hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+      </svg>
+      <span data-role="theme-label">System</span>
+    </button>
+  </div>
+</header>
+
+<main id="main" class="page-main">
+
+  <section class="page-intro">
+    <div class="wrap">
+      <h1>The exchange, live</h1>
+      <p class="lede">Every panel on this page reads a public endpoint that needs no key: the order book ten levels a side, the last twenty trades, a candle chart, and the event stream. Switch markets below and every reader on the page points at the new one.</p>
+    </div>
+  </section>
+
+  <section class="exchange-head" data-exchange-page data-market="BTC-USDT">
+    <div class="wrap exchange-head-row">
+      <div class="market-switch" role="group" aria-label="Market">
+        <button type="button" data-market-switch="BTC-USDT" aria-pressed="true">BTC-USDT</button>
+        <button type="button" data-market-switch="ETH-USDT" aria-pressed="false">ETH-USDT</button>
+      </div>
+      <span class="status-line">
+        <span class="status-dot" data-role="board-status-dot" data-state="loading" aria-hidden="true"></span>
+        <span data-role="board-status-text">Waiting for JavaScript</span>
+      </span>
+    </div>
+    <div class="wrap">
+      <div class="ticker-strip">
+        <div class="ticker-stat">
+          <span class="ticker-stat-label">Last</span>
+          <span class="ticker-stat-value mono" data-role="stat-last">Needs JavaScript</span>
+        </div>
+        <div class="ticker-stat">
+          <span class="ticker-stat-label">24 hour high</span>
+          <span class="ticker-stat-value mono" data-role="stat-high">Needs JavaScript</span>
+        </div>
+        <div class="ticker-stat">
+          <span class="ticker-stat-label">24 hour low</span>
+          <span class="ticker-stat-value mono" data-role="stat-low">Needs JavaScript</span>
+        </div>
+        <div class="ticker-stat">
+          <span class="ticker-stat-label">24 hour base volume</span>
+          <span class="ticker-stat-value mono" data-role="stat-base-vol">Needs JavaScript</span>
+        </div>
+        <div class="ticker-stat">
+          <span class="ticker-stat-label">24 hour quote volume</span>
+          <span class="ticker-stat-value mono" data-role="stat-quote-vol">Needs JavaScript</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-label="The order book and the candle chart">
+    <div class="wrap exchange-grid">
+      <div class="desk" role="region" aria-label="Live order book, ten levels a side">
+        <h2 class="visually-hidden">Order book</h2>
+        <div class="desk-head">
+          <span class="desk-market mono" data-role="board-market-label">BTC-USDT</span>
+        </div>
+        <div class="desk-book">
+          <div class="book-side" data-side="bid">
+            <p class="book-side-label">Bids</p>
+            <div class="book-rows" data-role="bid-rows">
+              <p class="desk-empty">The live book needs JavaScript enabled.</p>
+            </div>
+          </div>
+          <div class="book-side" data-side="ask">
+            <p class="book-side-label">Asks</p>
+            <div class="book-rows" data-role="ask-rows">
+              <p class="desk-empty">The live book needs JavaScript enabled.</p>
+            </div>
+          </div>
+        </div>
+        <p class="desk-updated" data-role="board-updated"></p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>One minute candles</h2>
+          <span class="status-line">
+            <span class="status-dot" data-role="candles-status-dot" data-state="loading" aria-hidden="true"></span>
+            <span data-role="candles-status-text">Waiting for JavaScript</span>
+          </span>
+        </div>
+        <figure class="candles-figure" data-role="candles-figure">
+          <p class="desk-empty">The candles chart needs JavaScript enabled.</p>
+        </figure>
+        <div class="candle-legend">
+          <span><span class="swatch up"></span>Up</span>
+          <span><span class="swatch down"></span>Down</span>
+        </div>
+        <p class="footer-note" style="margin-top: var(--sp-16);">Drawn from <code>GET /v1/exchange/markets/{symbol}/candles?interval=1m&amp;limit=60</code>, grid lines in the diagram fill token, candles in the accent colour for up and the ink colour for down.</p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-label="The trade tape and the event stream">
+    <div class="wrap exchange-secondary">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Last twenty trades</h2>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>When</th><th>Price</th><th>Quantity</th><th>Notional</th></tr>
+            </thead>
+            <tbody data-role="trades-body">
+              <tr><td colspan="4">Needs JavaScript enabled.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel" id="stream">
+        <div class="panel-head">
+          <h2>The stream</h2>
+          <span class="status-line">
+            <span class="status-dot" data-role="stream-status-dot" data-state="loading" aria-hidden="true"></span>
+            <span data-role="stream-status-text">Waiting for JavaScript</span>
+          </span>
+        </div>
+        <p><code>GET /v1/exchange/stream</code> is Server Sent Events, not a WebSocket: a plain HTTP response a browser reads with <code>EventSource</code>. This panel opens one for the market above and counts every message it receives.</p>
+        <p class="stream-counter-label">Events received</p>
+        <p class="stream-counter mono" data-role="stream-count">0</p>
+        <div class="codeblock">
+          <pre><code data-role="stream-code">const stream = new EventSource(
+  "/v1/exchange/stream?channels=book:BTC-USDT,trades:BTC-USDT&since=0"
+);
+stream.onmessage = (event) => {
+  const { channel, seq, data } = JSON.parse(event.data);
+};</code></pre>
+          <button type="button" class="copy-btn" data-role="stream-copy" data-copy="const stream = new EventSource(&quot;/v1/exchange/stream?channels=book:BTC-USDT,trades:BTC-USDT&amp;since=0&quot;);&#10;stream.onmessage = (event) => {&#10;  const { channel, seq, data } = JSON.parse(event.data);&#10;};">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+              <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+            </svg>
+            <span data-role="copy-label">Copy</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="sitefooter">
+  <div class="footer-inner">
+    <p class="footer-note">Source available under the <a href="https://github.com/atilladev-owner/Plutus/blob/main/LICENSE.md">PolyForm Noncommercial License 1.0.0</a>. Read it, run it, learn from it. Commercial use needs the author's written permission.</p>
+    <nav class="footer-links" aria-label="Project and proof">
+      <a href="https://github.com/atilladev-owner/Plutus">Source on GitHub</a>
+      <a href="https://github.com/atilladev-owner/Plutus/blob/main/LICENSE.md">Licence</a>
+      <a href="/v1/exchange/verify">Verify the exchange</a>
+      <a href="/limits">Verify a ledger</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>

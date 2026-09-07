@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Limits and proof, Plutus</title>
+<meta name="description" content="Every ceiling the sandbox and the exchange enforce, the ten order rejection reasons, and two live verify panels: one for the exchange, one explaining how to run it for a ledger.">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700&family=Nunito:wght@400;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<!--
+  Icons on this page are inline SVG redrawn from Lucide (https://lucide.dev), used under the
+  MIT licence. Recoloured with currentColor, one stroke weight, each with a text label.
+-->
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="wordmark" href="/">plutus</a>
+    <div class="topbar-scroll">
+      <nav class="topbar-nav" aria-label="Site">
+        <a href="/">Home</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/exchange">Exchange</a>
+        <a href="/use-cases">Use cases</a>
+        <a href="/set-up">Set up</a>
+        <a href="/limits" aria-current="page">Limits</a>
+        <a href="/docs">Docs</a>
+      </nav>
+    </div>
+    <button type="button" class="theme-toggle" data-theme-toggle aria-label="Theme, currently System. Activate to change it.">
+      <svg data-theme-icon="system" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect width="20" height="14" x="2" y="3" rx="2"></rect>
+        <line x1="8" x2="16" y1="21" y2="21"></line>
+        <line x1="12" x2="12" y1="17" y2="21"></line>
+      </svg>
+      <svg data-theme-icon="light" hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4"></circle>
+        <path d="M12 2v2"></path>
+        <path d="M12 20v2"></path>
+        <path d="m4.93 4.93 1.41 1.41"></path>
+        <path d="m17.66 17.66 1.41 1.41"></path>
+        <path d="M2 12h2"></path>
+        <path d="M20 12h2"></path>
+        <path d="m6.34 17.66-1.41 1.41"></path>
+        <path d="m19.07 4.93-1.41 1.41"></path>
+      </svg>
+      <svg data-theme-icon="dark" hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+      </svg>
+      <span data-role="theme-label">System</span>
+    </button>
+  </div>
+</header>
+
+<main id="main" class="page-main">
+
+  <section class="page-intro">
+    <div class="wrap">
+      <h1>Limits and proof</h1>
+      <p class="lede">Every ceiling the sandbox and the exchange enforce, the ten named reasons an order is rejected, and two live checks: one reading the exchange's own proof right now, one showing what running the same proof against a ledger looks like.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap limits-tables">
+      <div>
+        <h2>Sandbox ceilings</h2>
+        <p>Ceilings apply to sandbox keys and their ledgers. A ceiling hit is a 409 named <code>sandbox_limit_reached</code>, naming the ceiling. The exchange ledger and the house key are system owned and exempt.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Ceiling</th><th>Value</th></tr></thead>
+            <tbody>
+              <tr><td>Ledgers per key</td><td class="mono">10</td></tr>
+              <tr><td>Accounts per ledger</td><td class="mono">50</td></tr>
+              <tr><td>Journal entries per ledger</td><td class="mono">10,000</td></tr>
+              <tr><td>Webhook endpoints per key</td><td class="mono">5</td></tr>
+              <tr><td>Open holds per account</td><td class="mono">100</td></tr>
+              <tr><td>Request body</td><td class="mono">64 KB</td></tr>
+              <tr><td>Metadata</td><td class="mono">20 keys, 500 character values</td></tr>
+              <tr><td>Idle sandbox ledger</td><td>deleted after 14 days without a write</td></tr>
+              <tr><td>Idle sandbox key</td><td>deleted after 30 days without a request, with its ledgers</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h2>Exchange ceilings</h2>
+        <p>Every response carries <code>RateLimit-Limit</code>, <code>RateLimit-Remaining</code> and <code>RateLimit-Reset</code>. A refusal is a 429 named <code>rate_limited</code> with <code>Retry-After</code> in seconds.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Ceiling</th><th>Value</th></tr></thead>
+            <tbody>
+              <tr><td>Endpoint weight</td><td class="mono">1,200 per minute per key</td></tr>
+              <tr><td>Order placement</td><td class="mono">10 per second per key</td></tr>
+              <tr><td>Faucet</td><td>once per 24 hours per sandbox key</td></tr>
+              <tr><td>Markets list</td><td>free, no weight, cached 2 seconds</td></tr>
+              <tr><td>Book, trades, ticker</td><td class="mono">5 each, per address, cached 2 seconds</td></tr>
+              <tr><td>Candles</td><td class="mono">10, per address, cached 2 seconds</td></tr>
+              <tr><td>Stream opens</td><td class="mono">12 per minute per address</td></tr>
+              <tr><td>Concurrent streams</td><td class="mono">10 per address</td></tr>
+              <tr><td>Public exchange verify</td><td class="mono">2 per minute per address</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="rejections" aria-labelledby="rejections-heading">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="rejections-heading">The ten rejection reasons</h2>
+        <p>A rejected order still gets an id and a stable reason, never a bare error. Every one is named <code>order_rejected</code>.</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Reason</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">market_halted</td><td>the market is not accepting orders right now</td></tr>
+            <tr><td class="mono">price_not_tick</td><td>the price is not a multiple of the market's tick size</td></tr>
+            <tr><td class="mono">quantity_not_lot</td><td>the quantity is not a multiple of the market's lot size</td></tr>
+            <tr><td class="mono">below_min_notional</td><td>price times quantity falls under the market's minimum</td></tr>
+            <tr><td class="mono">insufficient_funds</td><td>the hold this order needs cannot be covered</td></tr>
+            <tr><td class="mono">post_only_would_take</td><td>a post only order would have filled immediately</td></tr>
+            <tr><td class="mono">fok_not_fillable</td><td>a fill or kill order could not fill in full</td></tr>
+            <tr><td class="mono">duplicate_client_order_id</td><td>this key already used that client order id with a different order</td></tr>
+            <tr><td class="mono">self_trade</td><td>this order would fill against the same key's own resting order</td></tr>
+            <tr><td class="mono">notional_too_large</td><td>price times quantity does not fit back into the exchange's integer arithmetic</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="verify-heading">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="verify-heading">Two live checks</h2>
+        <p>The exchange lives in one system ledger anyone can verify without a key. A ledger you open yourself needs your own key to read, so its panel shows how to run the same proof rather than running it for you.</p>
+      </div>
+    </div>
+    <div class="wrap verify-grid">
+      <div class="panel" data-verify-panel>
+        <div class="panel-head">
+          <h3>The exchange, right now</h3>
+          <span class="status-line">
+            <span class="status-dot" data-role="verify-panel-dot" data-state="loading" aria-hidden="true"></span>
+            <span data-role="verify-panel-status">Waiting for JavaScript</span>
+          </span>
+        </div>
+        <p class="mono" data-role="verify-panel-text">Needs JavaScript enabled.</p>
+        <p class="verify-panel-body">Read once per page load from <code>GET /v1/exchange/verify</code>, no key needed. A 429 here reads as checked recently, since this public route is limited to two reads a minute per address, not as a failure.</p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>A ledger you own</h3>
+        </div>
+        <p class="verify-panel-body">Run with the key that owns it. Recomputes the whole hash chain from the first entry, replays every balance and held amount, and sums each asset.</p>
+        <div class="codeblock">
+          <pre><code>curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/verify \
+  -H "Authorization: Bearer $KEY"</code></pre>
+          <button type="button" class="copy-btn" data-copy="curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/verify -H &quot;Authorization: Bearer $KEY&quot;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+              <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+            </svg>
+            <span data-role="copy-label">Copy</span>
+          </button>
+        </div>
+        <p class="verify-panel-body">The document shape, the same one the exchange panel reads:</p>
+        <div class="codeblock">
+          <pre><code>{
+  "ok": true,
+  "entries_checked": 1042,
+  "first_bad_seq": null,
+  "chain_ok": true,
+  "sequence_ok": true,
+  "replay_matches": true,
+  "assets": [
+    { "asset": "GHS", "sum": "0" },
+    { "asset": "USDT", "sum": "0" }
+  ],
+  "cached": false
+}</code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="sitefooter">
+  <div class="footer-inner">
+    <p class="footer-note">Source available under the <a href="https://github.com/atilladev-owner/Plutus/blob/main/LICENSE.md">PolyForm Noncommercial License 1.0.0</a>. Read it, run it, learn from it. Commercial use needs the author's written permission.</p>
+    <nav class="footer-links" aria-label="Project and proof">
+      <a href="https://github.com/atilladev-owner/Plutus">Source on GitHub</a>
+      <a href="https://github.com/atilladev-owner/Plutus/blob/main/LICENSE.md">Licence</a>
+      <a href="/v1/exchange/verify">Verify the exchange</a>
+      <a href="/limits">Verify a ledger</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>

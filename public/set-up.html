@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Set up, Plutus</title>
+<meta name="description" content="Two numbered sequences: mint a key, open a ledger, move money, verify; then faucet, sign, place, read. Every call as a copyable curl command, and the signing message spelled out exactly.">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700&family=Nunito:wght@400;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<!--
+  Icons on this page are inline SVG redrawn from Lucide (https://lucide.dev), used under the
+  MIT licence. Recoloured with currentColor, one stroke weight, each with a text label.
+-->
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="wordmark" href="/">plutus</a>
+    <div class="topbar-scroll">
+      <nav class="topbar-nav" aria-label="Site">
+        <a href="/">Home</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/exchange">Exchange</a>
+        <a href="/use-cases">Use cases</a>
+        <a href="/set-up" aria-current="page">Set up</a>
+        <a href="/limits">Limits</a>
+        <a href="/docs">Docs</a>
+      </nav>
+    </div>
+    <button type="button" class="theme-toggle" data-theme-toggle aria-label="Theme, currently System. Activate to change it.">
+      <svg data-theme-icon="system" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect width="20" height="14" x="2" y="3" rx="2"></rect>
+        <line x1="8" x2="16" y1="21" y2="21"></line>
+        <line x1="12" x2="12" y1="17" y2="21"></line>
+      </svg>
+      <svg data-theme-icon="light" hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4"></circle>
+        <path d="M12 2v2"></path>
+        <path d="M12 20v2"></path>
+        <path d="m4.93 4.93 1.41 1.41"></path>
+        <path d="m17.66 17.66 1.41 1.41"></path>
+        <path d="M2 12h2"></path>
+        <path d="M20 12h2"></path>
+        <path d="m6.34 17.66-1.41 1.41"></path>
+        <path d="m19.07 4.93-1.41 1.41"></path>
+      </svg>
+      <svg data-theme-icon="dark" hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+      </svg>
+      <span data-role="theme-label">System</span>
+    </button>
+  </div>
+</header>
+
+<main id="main" class="page-main">
+
+  <section class="page-intro">
+    <div class="wrap">
+      <h1>Set up, in order</h1>
+      <p class="lede">Two sequences, because each is one. No signup: a sandbox key comes back from the first call, ready to use immediately. Every command below has its own copy control.</p>
+    </div>
+  </section>
+
+  <section class="sequence" aria-labelledby="ledger-sequence-heading">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="ledger-sequence-heading">The ledger</h2>
+        <p>Mint a key, open a ledger, move money, verify.</p>
+      </div>
+
+      <div class="sequence-group">
+        <div class="step">
+          <p class="step-num mono">01</p>
+          <div class="step-body">
+            <h3>Mint a key</h3>
+            <p>No signup. The secret is shown exactly once, in this response.</p>
+            <div class="codeblock">
+              <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/keys</code></pre>
+              <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/keys">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+                  <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+                </svg>
+                <span data-role="copy-label">Copy</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <p class="step-num mono">02</p>
+          <div class="step-body">
+            <h3>Open a ledger</h3>
+            <p>Save the key as <code>$KEY</code> and the ledger id from this response as <code>$LEDGER</code>.</p>
+            <div class="codeblock">
+              <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers \
+  -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"shop"}'</code></pre>
+              <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -d '{&quot;name&quot;:&quot;shop&quot;}'">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+                  <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+                </svg>
+                <span data-role="copy-label">Copy</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <p class="step-num mono">03</p>
+          <div class="step-body">
+            <h3>Move money</h3>
+            <p>A world account is created lazily the first time an asset is used. This funds a till account from the world, then between accounts the same way.</p>
+            <div class="codeblock">
+              <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers \
+  -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: fund-1" \
+  -d '{"legs":[{"from":"world:GHS","to":"'$TILL'","asset":"GHS","amount":"125000"}]}'</code></pre>
+              <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -H &quot;Idempotency-Key: fund-1&quot; -d '{&quot;legs&quot;:[{&quot;from&quot;:&quot;world:GHS&quot;,&quot;to&quot;:&quot;'$TILL'&quot;,&quot;asset&quot;:&quot;GHS&quot;,&quot;amount&quot;:&quot;125000&quot;}]}'">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+                  <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+                </svg>
+                <span data-role="copy-label">Copy</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <p class="step-num mono">04</p>
+          <div class="step-body">
+            <h3>Verify</h3>
+            <p>Recomputes the whole hash chain from the first entry and proves every asset sums to zero. A stranger can run this without ever holding a key to someone else's ledger, since a public key still only reads its own.</p>
+            <div class="codeblock">
+              <pre><code>curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/verify \
+  -H "Authorization: Bearer $KEY"</code></pre>
+              <button type="button" class="copy-btn" data-copy="curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/verify -H &quot;Authorization: Bearer $KEY&quot;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+                  <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+                </svg>
+                <span data-role="copy-label">Copy</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sequence" aria-labelledby="exchange-sequence-heading">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="exchange-sequence-heading">The exchange</h2>
+        <p>Faucet, sign, place, read. Trading endpoints sign every request instead of sending a bearer token, so this half needs one more step than the ledger did.</p>
+      </div>
+
+      <div class="sequence-group">
+        <div class="step">
+          <p class="step-num mono">05</p>
+          <div class="step-body">
+            <h3>Faucet</h3>
+            <p>Funds the caller's sandbox exchange wallet from the world: 100,000 USDT, 1 BTC and 10 ETH, once per 24 hours per key. This call is itself signed, so it needs the signing step below before it can actually be sent; it is placed first here because it is the first thing a trading key does.</p>
+            <div class="codeblock">
+              <pre><code>POST /v1/exchange/faucet
+Content-Type: application/json
+X-Plutus-Key-Id, X-Plutus-Timestamp, X-Plutus-Recv-Window, X-Plutus-Signature</code></pre>
+              <button type="button" class="copy-btn" data-copy="POST /v1/exchange/faucet&#10;Content-Type: application/json&#10;X-Plutus-Key-Id, X-Plutus-Timestamp, X-Plutus-Recv-Window, X-Plutus-Signature">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+                  <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+                </svg>
+                <span data-role="copy-label">Copy</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <p class="step-num mono">06</p>
+          <div class="step-body">
+            <h3>Sign</h3>
+            <p>Four headers travel with a signed request: <code>X-Plutus-Key-Id</code>, <code>X-Plutus-Timestamp</code> in Unix milliseconds, <code>X-Plutus-Recv-Window</code> (optional, default 5000ms), and <code>X-Plutus-Signature</code>, a hex HMAC SHA256 over the timestamp, the method, the path and the body, keyed by the SHA256 digest of the key secret rather than the secret itself, since that digest is all the server ever stores.</p>
+            <div class="step-signature">
+              <p>This example uses a key id and secret invented for this page, so the signature can actually be recomputed rather than taken on trust.</p>
+              <p>Key id: <span class="mono">key_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a</span></p>
+              <p>Secret: <span class="mono">pl_test_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a5b6c7d8e9f0a1b2c</span>. This key does not exist. Signing with it authenticates against nothing, live or otherwise.</p>
+            </div>
+            <p>The exact bytes HMAC SHA256 signs, keyed by the SHA256 digest of that secret, one line for the timestamp, the method, the path and the body, with no trailing newline after the body:</p>
+            <div class="codeblock">
+              <pre><code>1767225600000
+POST
+/v1/exchange/orders
+{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000","client_order_id":"readme-worked-example"}</code></pre>
+              <button type="button" class="copy-btn" data-copy="1767225600000&#10;POST&#10;/v1/exchange/orders&#10;{&quot;market&quot;:&quot;BTC-USDT&quot;,&quot;side&quot;:&quot;buy&quot;,&quot;type&quot;:&quot;limit&quot;,&quot;price&quot;:&quot;6000000000&quot;,&quot;quantity&quot;:&quot;100000&quot;,&quot;client_order_id&quot;:&quot;readme-worked-example&quot;}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+                  <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+                </svg>
+                <span data-role="copy-label">Copy</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <p class="step-num mono">07</p>
+          <div class="step-body">
+            <h3>Place</h3>
+            <p>The headers computed in the step above, sent with the exact body they were computed over. <code>client_order_id</code> travels in the body: a placement needs it, or an <code>Idempotency-Key</code> header, or the server refuses it named <code>validation_failed</code>.</p>
+            <div class="codeblock">
+              <pre><code>BODY='{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000","client_order_id":"readme-worked-example"}'
+curl -s -X POST https://plutus-ten-eta.vercel.app/v1/exchange/orders \
+  -H "Content-Type: application/json" \
+  -H "X-Plutus-Key-Id: key_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a" \
+  -H "X-Plutus-Timestamp: 1767225600000" \
+  -H "X-Plutus-Recv-Window: 5000" \
+  -H "X-Plutus-Signature: ee35d7b3fbfbd93a8fcb5048280505d674ad0432435614ad056d50edbdee0832" \
+  -d "$BODY"</code></pre>
+              <button type="button" class="copy-btn" data-copy="BODY='{&quot;market&quot;:&quot;BTC-USDT&quot;,&quot;side&quot;:&quot;buy&quot;,&quot;type&quot;:&quot;limit&quot;,&quot;price&quot;:&quot;6000000000&quot;,&quot;quantity&quot;:&quot;100000&quot;,&quot;client_order_id&quot;:&quot;readme-worked-example&quot;}'&#10;curl -s -X POST https://plutus-ten-eta.vercel.app/v1/exchange/orders -H &quot;Content-Type: application/json&quot; -H &quot;X-Plutus-Key-Id: key_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a&quot; -H &quot;X-Plutus-Timestamp: 1767225600000&quot; -H &quot;X-Plutus-Recv-Window: 5000&quot; -H &quot;X-Plutus-Signature: ee35d7b3fbfbd93a8fcb5048280505d674ad0432435614ad056d50edbdee0832&quot; -d &quot;$BODY&quot;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+                  <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+                </svg>
+                <span data-role="copy-label">Copy</span>
+              </button>
+            </div>
+            <p><code>docs/place-order.mjs</code> in the repository reimplements this same scheme with nothing but <code>node:crypto</code>, and places one real order against the live host from any machine outside the repository.</p>
+          </div>
+        </div>
+
+        <div class="step">
+          <p class="step-num mono">08</p>
+          <div class="step-body">
+            <h3>Read</h3>
+            <p>Reading is signed the same way as placing, over an empty body. This reads the order back by the id the placement returned.</p>
+            <div class="codeblock">
+              <pre><code>curl -s https://plutus-ten-eta.vercel.app/v1/exchange/orders/$ORDER \
+  -H "X-Plutus-Key-Id: $KEY_ID" \
+  -H "X-Plutus-Timestamp: $TIMESTAMP" \
+  -H "X-Plutus-Signature: $SIGNATURE"</code></pre>
+              <button type="button" class="copy-btn" data-copy="curl -s https://plutus-ten-eta.vercel.app/v1/exchange/orders/$ORDER -H &quot;X-Plutus-Key-Id: $KEY_ID&quot; -H &quot;X-Plutus-Timestamp: $TIMESTAMP&quot; -H &quot;X-Plutus-Signature: $SIGNATURE&quot;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+                  <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+                </svg>
+                <span data-role="copy-label">Copy</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <a class="btn btn-primary" href="/exchange">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 12h14"></path>
+          <path d="m12 5 7 7-7 7"></path>
+        </svg>
+        Watch the market this places into
+      </a>
+    </div>
+  </section>
+
+</main>
+
+<footer class="sitefooter">
+  <div class="footer-inner">
+    <p class="footer-note">Source available under the <a href="https://github.com/atilladev-owner/Plutus/blob/main/LICENSE.md">PolyForm Noncommercial License 1.0.0</a>. Read it, run it, learn from it. Commercial use needs the author's written permission.</p>
+    <nav class="footer-links" aria-label="Project and proof">
+      <a href="https://github.com/atilladev-owner/Plutus">Source on GitHub</a>
+      <a href="https://github.com/atilladev-owner/Plutus/blob/main/LICENSE.md">Licence</a>
+      <a href="/v1/exchange/verify">Verify the exchange</a>
+      <a href="/limits">Verify a ledger</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>

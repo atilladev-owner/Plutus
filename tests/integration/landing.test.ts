@@ -19,8 +19,24 @@ const PAGE_FILES: Record<string, string> = {
   "/limits": "limits.html",
 };
 
+/**
+ * The five pages task 2 builds. Checked individually, with the title tag alongside the h1
+ * count, on top of the generic six path sweep below.
+ */
+const TASK_TWO_PAGES = [
+  "/how-it-works",
+  "/exchange",
+  "/use-cases",
+  "/set-up",
+  "/limits",
+];
+
 function h1Count(html: string): number {
   return (html.match(/<h1[\s>]/g) ?? []).length;
+}
+
+function hasTitleTag(html: string): boolean {
+  return /<title>[^<]+<\/title>/.test(html);
 }
 
 describe("landing", () => {
@@ -32,11 +48,22 @@ describe("landing", () => {
     expect(h1Count(res.text)).toBe(1);
   });
 
-  it("answers a page not yet built with the ordinary 404", async () => {
+  it("answers a page that names no file under public/ with the ordinary 404", async () => {
     const { app } = await makeTestApp();
-    const res = await request(app).get("/how-it-works");
+    const res = await request(app).get("/not-a-real-page");
     expect(res.status).toBe(404);
     expect(res.headers["content-type"]).toContain("application/problem+json");
+  });
+
+  it("answers each of the five inner pages with 200 text/html, one h1 and a title tag", async () => {
+    const { app } = await makeTestApp();
+    for (const route of TASK_TWO_PAGES) {
+      const res = await request(app).get(route);
+      expect(res.status, `${route} should be 200`).toBe(200);
+      expect(res.headers["content-type"]).toContain("text/html");
+      expect(h1Count(res.text), `${route} should carry exactly one h1`).toBe(1);
+      expect(hasTitleTag(res.text), `${route} should carry a title tag`).toBe(true);
+    }
   });
 
   it("serves every one of the six paths as 200 text/html with one h1 once its file exists, and 404 otherwise", async () => {

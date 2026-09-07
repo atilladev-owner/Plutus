@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Use cases, Plutus</title>
+<meta name="description" content="Four narratives built on accounts, transfers and holds: a savings group, group expenses, a tab, and a deposit on a reservation, each with the API calls and a money flow diagram.">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700&family=Nunito:wght@400;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<!--
+  Icons on this page are inline SVG redrawn from Lucide (https://lucide.dev), used under the
+  MIT licence. Recoloured with currentColor, one stroke weight, each with a text label.
+-->
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="wordmark" href="/">plutus</a>
+    <div class="topbar-scroll">
+      <nav class="topbar-nav" aria-label="Site">
+        <a href="/">Home</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/exchange">Exchange</a>
+        <a href="/use-cases" aria-current="page">Use cases</a>
+        <a href="/set-up">Set up</a>
+        <a href="/limits">Limits</a>
+        <a href="/docs">Docs</a>
+      </nav>
+    </div>
+    <button type="button" class="theme-toggle" data-theme-toggle aria-label="Theme, currently System. Activate to change it.">
+      <svg data-theme-icon="system" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect width="20" height="14" x="2" y="3" rx="2"></rect>
+        <line x1="8" x2="16" y1="21" y2="21"></line>
+        <line x1="12" x2="12" y1="17" y2="21"></line>
+      </svg>
+      <svg data-theme-icon="light" hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4"></circle>
+        <path d="M12 2v2"></path>
+        <path d="M12 20v2"></path>
+        <path d="m4.93 4.93 1.41 1.41"></path>
+        <path d="m17.66 17.66 1.41 1.41"></path>
+        <path d="M2 12h2"></path>
+        <path d="M20 12h2"></path>
+        <path d="m6.34 17.66-1.41 1.41"></path>
+        <path d="m19.07 4.93-1.41 1.41"></path>
+      </svg>
+      <svg data-theme-icon="dark" hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+      </svg>
+      <span data-role="theme-label">System</span>
+    </button>
+  </div>
+</header>
+
+<main id="main" class="page-main">
+
+  <section class="page-intro">
+    <div class="wrap">
+      <h1>What to build with it</h1>
+      <p class="lede">Accounts, transfers and holds are general enough to carry patterns well outside trading. Four narratives, each with the calls that story needs and a small diagram of where the money goes.</p>
+    </div>
+  </section>
+
+  <section class="story" aria-labelledby="story-savings-heading">
+    <div class="wrap story-grid">
+      <div class="story-copy">
+        <p class="story-index mono">Story 01</p>
+        <div class="usecase-head" style="margin-bottom: var(--sp-12);">
+          <span class="usecase-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+          </span>
+          <h2 id="story-savings-heading">A savings group</h2>
+        </div>
+        <p>Ama and five friends run a rotating savings group: everyone contributes on the first of the month, and one member takes the whole pot in turn. One ledger holds the group, one account per member plus a shared pot account. A contribution is a transfer into the pot. A payout on schedule is a transfer back out, and the journal is the record, not a notebook passed around a group chat.</p>
+      </div>
+      <div class="story-detail">
+        <div class="codeblock">
+          <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers \
+  -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: contribution-ama-sep" \
+  -d '{"legs":[{"from":"'$AMA'","to":"'$POT'","asset":"GHS","amount":"5000"}]}'</code></pre>
+          <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -H &quot;Idempotency-Key: contribution-ama-sep&quot; -d '{&quot;legs&quot;:[{&quot;from&quot;:&quot;'$AMA'&quot;,&quot;to&quot;:&quot;'$POT'&quot;,&quot;asset&quot;:&quot;GHS&quot;,&quot;amount&quot;:&quot;5000&quot;}]}'">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+              <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+            </svg>
+            <span data-role="copy-label">Copy</span>
+          </button>
+        </div>
+        <div class="codeblock">
+          <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers \
+  -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: payout-kofi-sep" \
+  -d '{"legs":[{"from":"'$POT'","to":"'$KOFI'","asset":"GHS","amount":"30000"}]}'</code></pre>
+          <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -H &quot;Idempotency-Key: payout-kofi-sep&quot; -d '{&quot;legs&quot;:[{&quot;from&quot;:&quot;'$POT'&quot;,&quot;to&quot;:&quot;'$KOFI'&quot;,&quot;asset&quot;:&quot;GHS&quot;,&quot;amount&quot;:&quot;30000&quot;}]}'">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+              <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+            </svg>
+            <span data-role="copy-label">Copy</span>
+          </button>
+        </div>
+        <figure class="diagram">
+          <svg viewBox="0 0 560 140" role="img" aria-labelledby="story1-title" xmlns="http://www.w3.org/2000/svg">
+            <title id="story1-title">Money flow for a savings group: members contribute into a pot, the pot pays out to one member in turn</title>
+            <defs>
+              <marker id="s1-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M0 0 L10 5 L0 10 z" style="fill: var(--accent);"></path>
+              </marker>
+            </defs>
+            <rect x="20" y="35" width="140" height="60" rx="8" style="fill: var(--panel); stroke: var(--line); stroke-width: 1;"></rect>
+            <text x="90" y="70" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 14px; fill: var(--ink);">Members</text>
+            <line x1="160" y1="65" x2="220" y2="65" style="stroke: var(--accent); stroke-width: 2;" marker-end="url(#s1-arrow)"></line>
+            <text x="190" y="52" text-anchor="middle" style="font-family: var(--font-mono); font-size: 13px; fill: var(--accent);">contribute</text>
+            <rect x="220" y="35" width="120" height="60" rx="8" style="fill: var(--accent-wash); stroke: var(--line); stroke-width: 1;"></rect>
+            <text x="280" y="70" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 14px; fill: var(--ink);">Pot</text>
+            <line x1="340" y1="65" x2="400" y2="65" style="stroke: var(--accent); stroke-width: 2;" marker-end="url(#s1-arrow)"></line>
+            <text x="370" y="52" text-anchor="middle" style="font-family: var(--font-mono); font-size: 13px; fill: var(--accent);">payout</text>
+            <rect x="400" y="35" width="140" height="60" rx="8" style="fill: var(--panel); stroke: var(--line); stroke-width: 1;"></rect>
+            <text x="470" y="70" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 14px; fill: var(--ink);">Member in turn</text>
+          </svg>
+          <figcaption class="diagram-caption">Each member's contribution is a transfer into the pot, and the payout on schedule is a transfer back out to whoever's turn it is.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="story story--reverse" aria-labelledby="story-expenses-heading">
+    <div class="wrap story-grid">
+      <div class="story-copy">
+        <p class="story-index mono">Story 02</p>
+        <div class="usecase-head" style="margin-bottom: var(--sp-12);">
+          <span class="usecase-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"></path>
+              <path d="M8 7h8"></path>
+              <path d="M8 11h8"></path>
+              <path d="M8 15h5"></path>
+            </svg>
+          </span>
+          <h2 id="story-expenses-heading">Group expenses</h2>
+        </div>
+        <p>Kofi and Ama share a flat and a ledger, one account each. Kofi pays for groceries and logs a transfer for Ama's share directly from her account to his. Nobody keeps a running spreadsheet: a balance read on either account settles who owes what, right up to the day they split the flat.</p>
+      </div>
+      <div class="story-detail">
+        <div class="codeblock">
+          <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers \
+  -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: groceries-week-1" \
+  -d '{"legs":[{"from":"'$AMA'","to":"'$KOFI'","asset":"GHS","amount":"3000"}],"memo":"half of groceries"}'</code></pre>
+          <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -H &quot;Idempotency-Key: groceries-week-1&quot; -d '{&quot;legs&quot;:[{&quot;from&quot;:&quot;'$AMA'&quot;,&quot;to&quot;:&quot;'$KOFI'&quot;,&quot;asset&quot;:&quot;GHS&quot;,&quot;amount&quot;:&quot;3000&quot;}],&quot;memo&quot;:&quot;half of groceries&quot;}'">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+              <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+            </svg>
+            <span data-role="copy-label">Copy</span>
+          </button>
+        </div>
+        <div class="codeblock">
+          <pre><code>curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/accounts/$KOFI \
+  -H "Authorization: Bearer $KEY"</code></pre>
+          <button type="button" class="copy-btn" data-copy="curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/accounts/$KOFI -H &quot;Authorization: Bearer $KEY&quot;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+              <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+            </svg>
+            <span data-role="copy-label">Copy</span>
+          </button>
+        </div>
+        <figure class="diagram">
+          <svg viewBox="0 0 560 140" role="img" aria-labelledby="story2-title" xmlns="http://www.w3.org/2000/svg">
+            <title id="story2-title">Money flow for group expenses: the amount owed transfers directly from the account that owes to the account that paid</title>
+            <rect x="20" y="35" width="150" height="60" rx="8" style="fill: var(--panel); stroke: var(--line); stroke-width: 1;"></rect>
+            <text x="95" y="70" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 14px; fill: var(--ink);">Ama's account</text>
+            <line x1="170" y1="65" x2="382" y2="65" style="stroke: var(--accent); stroke-width: 2;"></line>
+            <path d="M370 58 L382 65 L370 72 Z" style="fill: var(--accent);"></path>
+            <text x="275" y="52" text-anchor="middle" style="font-family: var(--font-mono); font-size: 13px; fill: var(--accent);">half of groceries</text>
+            <rect x="390" y="35" width="150" height="60" rx="8" style="fill: var(--accent-wash); stroke: var(--line); stroke-width: 1;"></rect>
+            <text x="465" y="70" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 14px; fill: var(--ink);">Kofi's account</text>
+          </svg>
+          <figcaption class="diagram-caption">The amount owed transfers directly from the account that owes to the account that paid, so a balance read is the reconciliation.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="story" aria-labelledby="story-tab-heading">
+    <div class="wrap story-grid">
+      <div class="story-copy">
+        <p class="story-index mono">Story 03</p>
+        <div class="usecase-head" style="margin-bottom: var(--sp-12);">
+          <span class="usecase-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M17 8h1a4 4 0 1 1 0 8h-1"></path>
+              <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"></path>
+              <line x1="6" x2="6" y1="2" y2="4"></line>
+              <line x1="10" x2="10" y1="2" y2="4"></line>
+              <line x1="14" x2="14" y1="2" y2="4"></line>
+            </svg>
+          </span>
+          <h2 id="story-tab-heading">A tab</h2>
+        </div>
+        <p>A guest opens a bar tab. A hold reserves a ceiling against their account the moment it opens, so the till knows the money is there without taking it yet. At close, the hold is captured for the exact amount owed and the rest is released in the same call. Nobody's money moves until the tab is actually settled.</p>
+      </div>
+      <div class="story-detail">
+        <div class="codeblock">
+          <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/holds \
+  -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"account":"'$GUEST'","amount":"20000","memo":"tab ceiling"}'</code></pre>
+          <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/holds -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -d '{&quot;account&quot;:&quot;'$GUEST'&quot;,&quot;amount&quot;:&quot;20000&quot;,&quot;memo&quot;:&quot;tab ceiling&quot;}'">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+              <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+            </svg>
+            <span data-role="copy-label">Copy</span>
+          </button>
+        </div>
+        <div class="codeblock">
+          <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/holds/$HOLD/capture \
+  -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"to":"'$TILL'","amount":"14500","release_remainder":true}'</code></pre>
+          <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/holds/$HOLD/capture -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -d '{&quot;to&quot;:&quot;'$TILL'&quot;,&quot;amount&quot;:&quot;14500&quot;,&quot;release_remainder&quot;:true}'">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+              <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+            </svg>
+            <span data-role="copy-label">Copy</span>
+          </button>
+        </div>
+        <svg class="usecase-diagram" viewBox="0 0 220 46" role="presentation" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" style="margin-top: var(--sp-16);">
+          <rect x="0" y="16" width="220" height="14" rx="4" style="fill: var(--data-1);"></rect>
+          <rect x="0" y="16" width="140" height="14" rx="4" style="fill: var(--accent-wash);"></rect>
+          <rect x="0" y="16" width="70" height="14" rx="4" style="fill: var(--accent);"></rect>
+          <text x="0" y="10" style="font-family: var(--font-mono); font-size: 9px; fill: var(--muted);">opened</text>
+          <text x="72" y="10" style="font-family: var(--font-mono); font-size: 9px; fill: var(--muted);">captured</text>
+          <text x="142" y="10" style="font-family: var(--font-mono); font-size: 9px; fill: var(--muted);">released</text>
+        </svg>
+        <p class="diagram-caption">A tab's hold moves from opened to captured for what was owed, with the rest released in the same call.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="story story--reverse" aria-labelledby="story-deposit-heading">
+    <div class="wrap story-grid">
+      <div class="story-copy">
+        <p class="story-index mono">Story 04</p>
+        <div class="usecase-head" style="margin-bottom: var(--sp-12);">
+          <span class="usecase-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+          </span>
+          <h2 id="story-deposit-heading">A deposit on a reservation</h2>
+        </div>
+        <p>A hotel places a hold at booking, the size of the deposit policy. If the stay ends with nothing owed, the hold is released untouched. If there was a damage fee, the hold is captured for exactly that amount and the rest still goes back. The hold's own state answers whether a deposit is still outstanding, without a phone call to the front desk.</p>
+      </div>
+      <div class="story-detail">
+        <div class="codeblock">
+          <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/holds \
+  -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"account":"'$GUEST'","amount":"50000","expires_in_seconds":604800,"memo":"reservation deposit"}'</code></pre>
+          <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/holds -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -d '{&quot;account&quot;:&quot;'$GUEST'&quot;,&quot;amount&quot;:&quot;50000&quot;,&quot;expires_in_seconds&quot;:604800,&quot;memo&quot;:&quot;reservation deposit&quot;}'">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+              <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+            </svg>
+            <span data-role="copy-label">Copy</span>
+          </button>
+        </div>
+        <div class="codeblock">
+          <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/holds/$HOLD/release \
+  -H "Authorization: Bearer $KEY"</code></pre>
+          <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/holds/$HOLD/release -H &quot;Authorization: Bearer $KEY&quot;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+              <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+            </svg>
+            <span data-role="copy-label">Copy</span>
+          </button>
+        </div>
+        <figure class="diagram">
+          <svg viewBox="0 0 560 150" role="img" aria-labelledby="story4-title" xmlns="http://www.w3.org/2000/svg">
+            <title id="story4-title">Money flow for a reservation deposit: a hold at booking closes either released in full or captured for a fee with the rest released</title>
+            <defs>
+              <marker id="s4-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M0 0 L10 5 L0 10 z" style="fill: var(--accent);"></path>
+              </marker>
+            </defs>
+            <rect x="20" y="45" width="150" height="60" rx="8" style="fill: var(--panel); stroke: var(--line); stroke-width: 1;"></rect>
+            <text x="95" y="80" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 14px; fill: var(--ink);">Deposit held</text>
+            <line x1="170" y1="60" x2="230" y2="25" style="stroke: var(--accent); stroke-width: 2;" marker-end="url(#s4-arrow)"></line>
+            <line x1="170" y1="90" x2="230" y2="125" style="stroke: var(--accent); stroke-width: 2;" marker-end="url(#s4-arrow)"></line>
+            <rect x="230" y="0" width="150" height="55" rx="8" style="fill: var(--ground); stroke: var(--line); stroke-width: 1.5;"></rect>
+            <text x="305" y="32" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 13px; fill: var(--ink);">Nothing owed</text>
+            <line x1="380" y1="27" x2="420" y2="27" style="stroke: var(--accent); stroke-width: 2;" marker-end="url(#s4-arrow)"></line>
+            <rect x="420" y="0" width="130" height="55" rx="8" style="fill: var(--ground); stroke: var(--line); stroke-width: 1.5;"></rect>
+            <text x="485" y="32" text-anchor="middle" style="font-family: var(--font-mono); font-size: 12px; fill: var(--muted);">Released in full</text>
+            <rect x="230" y="98" width="150" height="55" rx="8" style="fill: var(--ground); stroke: var(--accent); stroke-width: 1.5;"></rect>
+            <text x="305" y="130" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 13px; fill: var(--ink);">Fee owed</text>
+            <line x1="380" y1="125" x2="420" y2="125" style="stroke: var(--accent); stroke-width: 2;" marker-end="url(#s4-arrow)"></line>
+            <rect x="420" y="98" width="130" height="55" rx="8" style="fill: var(--ground); stroke: var(--accent); stroke-width: 1.5;"></rect>
+            <text x="485" y="122" text-anchor="middle" style="font-family: var(--font-mono); font-size: 11px; fill: var(--muted);">Captured,</text>
+            <text x="485" y="136" text-anchor="middle" style="font-family: var(--font-mono); font-size: 11px; fill: var(--muted);">rest released</text>
+          </svg>
+          <figcaption class="diagram-caption">A deposit hold closes either released in full, when nothing was owed, or captured for exactly the fee, with whatever remains released either way.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="sitefooter">
+  <div class="footer-inner">
+    <p class="footer-note">Source available under the <a href="https://github.com/atilladev-owner/Plutus/blob/main/LICENSE.md">PolyForm Noncommercial License 1.0.0</a>. Read it, run it, learn from it. Commercial use needs the author's written permission.</p>
+    <nav class="footer-links" aria-label="Project and proof">
+      <a href="https://github.com/atilladev-owner/Plutus">Source on GitHub</a>
+      <a href="https://github.com/atilladev-owner/Plutus/blob/main/LICENSE.md">Licence</a>
+      <a href="/v1/exchange/verify">Verify the exchange</a>
+      <a href="/limits">Verify a ledger</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>
