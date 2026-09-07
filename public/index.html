@@ -402,5 +402,20 @@ POST
       </section>
     </main>
   </div>
+  <script>
+    // Side panel links scroll to their section and replace the address instead of pushing a
+    // history entry, so the browser back button leaves the page rather than walking the panel.
+    document.querySelectorAll("aside.side a[href^=\"#\"]").forEach(function (a) {
+      a.setAttribute("data-guide-nav", "");
+      a.addEventListener("click", function (event) {
+        var id = a.getAttribute("href").slice(1);
+        var target = document.getElementById(id);
+        if (!target) return;
+        event.preventDefault();
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        history.replaceState(null, "", "#" + id);
+      });
+    });
+  </script>
 </body>
 </html>
