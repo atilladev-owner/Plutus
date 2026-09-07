@@ -73,7 +73,9 @@ Plutus does this pairing entirely inside one database function, guarded by a loc
 one order on a given market is ever being matched at a time. That is slower than the
 specialised, all in memory engines real exchanges run, on purpose: it means a match and
 the money it moves are the same database transaction, so it is not possible for a trade
-to exist that the ledger disagrees with.
+to exist that the ledger disagrees with. A market order carries no price protection: it
+walks the book until its amount is spent with no worst price bound, so on a thin book it
+can fill far from the last traded price. A limit order is the way to bound it.
 
 **The house.** The house is the counterparty a trader's order can fill against when no
 other trader is currently on the other side. It is not a hidden advantage, just an

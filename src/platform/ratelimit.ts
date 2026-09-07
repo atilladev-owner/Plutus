@@ -5,7 +5,7 @@ import { ApiError } from "../domain/errors.js";
 import type { AppDeps } from "../deps.js";
 import type { RouteDef, AuthedKey } from "./route.js";
 
-export type RateBucket = "mint" | "sandbox" | "live" | "verify" | "verify_public" | "weight" | "place";
+export type RateBucket = "mint" | "sandbox" | "live" | "verify" | "verify_public" | "weight" | "place" | "stream";
 export interface RateResult { ok: boolean; limit: number; remaining: number; resetAt: number }
 export interface RateLimiter { limit(bucket: RateBucket, id: string, points?: number): Promise<RateResult> }
 
@@ -25,6 +25,10 @@ export const RATE_RULES: Record<RateBucket, { points: number; windowSeconds: num
   // id always looks like "key_...", never a dotted IP address or "::1".
   weight: { points: 1200, windowSeconds: 60 },
   place: { points: 10, windowSeconds: 1 },
+  // The stream, spec 10.7: 12 opens a minute per address, charged at open time through
+  // this same shared limiter, ahead of the local, per process concurrency cap
+  // (src/routes/exchange-stream.ts's own activeStreams count) rather than instead of it.
+  stream: { points: 12, windowSeconds: 60 },
 };
 
 /** Sliding window in process. Correct for one instance, which is exactly what tests and local dev are.
@@ -59,7 +63,7 @@ export class UpstashRateLimiter implements RateLimiter {
     });
     this.limiters = {
       mint: make("mint"), sandbox: make("sandbox"), live: make("live"), verify: make("verify"),
-      verify_public: make("verify_public"), weight: make("weight"), place: make("place"),
+      verify_public: make("verify_public"), weight: make("weight"), place: make("place"), stream: make("stream"),
     };
   }
   async limit(bucket: RateBucket, id: string, points = 1): Promise<RateResult> {

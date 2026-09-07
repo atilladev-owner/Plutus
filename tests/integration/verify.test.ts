@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import request from "supertest";
 import { makeTestApp } from "../helpers/app.js";
 import { mintKey, bearer } from "../helpers/keys.js";
+import type { Cache } from "../../src/platform/cache.js";
 
 describe("verify", () => {
   it("passes on an honest ledger, then fails naming the tampered sequence", async () => {
@@ -42,5 +43,24 @@ describe("verify", () => {
     const l = (await request(app).post("/v1/ledgers").set(h).send({ name: "v" })).body;
     for (let i = 0; i < 10; i++) expect((await request(app).get(`/v1/ledgers/${l.id}/verify`).set(h)).status).toBe(200);
     expect((await request(app).get(`/v1/ledgers/${l.id}/verify`).set(h)).status).toBe(429);
+  });
+
+  // Whole branch review, finding 4: verifyLedgerReport called deps.cache.get and set
+  // unguarded, unlike the identical caching src/routes/exchange-market-data.ts already
+  // guards (readCache and writeCache there): a broken cache would have turned a perfectly
+  // healthy ledger's verify call into a 500. Same fix, same proof: a cache whose get and
+  // set both throw still answers 200 with the real, freshly computed report.
+  it("treats a cache read or write failure as a miss, not a 500", async () => {
+    const brokenCache: Cache = {
+      get: async () => { throw new Error("redis unreachable"); },
+      set: async () => { throw new Error("redis unreachable"); },
+    };
+    const { app } = await makeTestApp({ cache: brokenCache });
+    const k = await mintKey(app);
+    const h = bearer(k.secret);
+    const l = (await request(app).post("/v1/ledgers").set(h).send({ name: "v" })).body;
+    const res = await request(app).get(`/v1/ledgers/${l.id}/verify`).set(h);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, chain_ok: true, sequence_ok: true, replay_matches: true, cached: false });
   });
 });

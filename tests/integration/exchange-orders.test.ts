@@ -116,10 +116,36 @@ describe("exchange orders", () => {
     await cancelAll(app, k);
   });
 
+  // Whole branch review, finding 2: a placement needs a replay handle, spec 10.8's own
+  // closing line, so client_order_id or an Idempotency-Key header, but never neither.
+  it("refuses a placement with neither client_order_id nor an Idempotency-Key header", async () => {
+    const { app } = await makeTestApp();
+    const k = await fundedKey(app);
+    const body = { market: "BTC-USDT", side: "buy", type: "limit", price: "73500000000", quantity: "100000" };
+    const res = await place(app, k, body);
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe("validation_failed");
+    expect(res.body.detail).toContain("client_order_id");
+    expect(res.body.detail).toContain("Idempotency-Key");
+  });
+
+  it("accepts a placement carrying only an Idempotency-Key header, no client_order_id", async () => {
+    const { app } = await makeTestApp();
+    const k = await fundedKey(app);
+    const body = { market: "BTC-USDT", side: "buy", type: "limit", price: "73600000000", quantity: "100000" };
+    const res = await request(app).post("/v1/exchange/orders")
+      .set({ ...sign(k, "POST", "/v1/exchange/orders", body), "Idempotency-Key": "idem-only-1" })
+      .send(body);
+    expect(res.status).toBe(201);
+    expect(res.body.client_order_id).toBeNull();
+
+    await cancelAll(app, k);
+  });
+
   it("lists it under status=open, and no longer once cancelled", async () => {
     const { app } = await makeTestApp();
     const k = await fundedKey(app);
-    const placed = await place(app, k, { market: "BTC-USDT", side: "buy", type: "limit", price: "61000000000", quantity: "100000" });
+    const placed = await place(app, k, { market: "BTC-USDT", side: "buy", type: "limit", price: "61000000000", quantity: "100000", client_order_id: "list-status-1" });
     expect(placed.status).toBe(201);
 
     const open = await listOrders(app, k, "?status=open");
@@ -161,12 +187,12 @@ describe("exchange orders", () => {
   it("cancel all scoped to one market leaves the other market's open order alone", async () => {
     const { app } = await makeTestApp();
     const k = await fundedKey(app);
-    const btc = await place(app, k, { market: "BTC-USDT", side: "buy", type: "limit", price: "63000000000", quantity: "100000" });
+    const btc = await place(app, k, { market: "BTC-USDT", side: "buy", type: "limit", price: "63000000000", quantity: "100000", client_order_id: "cancel-scope-btc-1" });
     // Below, not above, matching.test.ts's ETH-USDT price band (1,000.00 to 1,010.00 USDT):
     // scenario (g) there deliberately leaves a sell resting forever at 1,010.00 USDT, and a
     // buy above that price would cross it the instant this test's own resting buy is placed,
     // whichever test file gets there first while both share the same database.
-    const eth = await place(app, k, { market: "ETH-USDT", side: "buy", type: "limit", price: "900000000", quantity: "1000000" });
+    const eth = await place(app, k, { market: "ETH-USDT", side: "buy", type: "limit", price: "900000000", quantity: "1000000", client_order_id: "cancel-scope-eth-1" });
     expect(btc.status).toBe(201);
     expect(eth.status).toBe(201);
 
@@ -195,9 +221,9 @@ describe("exchange orders", () => {
       expect(ep.status).toBe(201);
       await deps.pool.query("update webhook_endpoints set url = $2 where id = $1", [ep.body.id, rx.url]);
 
-      const rest = await place(app, seller, { market: "BTC-USDT", side: "sell", type: "limit", price: "64000000000", quantity: "100000" });
+      const rest = await place(app, seller, { market: "BTC-USDT", side: "sell", type: "limit", price: "64000000000", quantity: "100000", client_order_id: "webhook-rest-1" });
       expect(rest.status).toBe(201);
-      const taker = await place(app, buyer, { market: "BTC-USDT", side: "buy", type: "limit", price: "64000000000", quantity: "100000" });
+      const taker = await place(app, buyer, { market: "BTC-USDT", side: "buy", type: "limit", price: "64000000000", quantity: "100000", client_order_id: "webhook-taker-1" });
       expect(taker.status).toBe(201);
       expect(taker.body.status).toBe("filled");
 
@@ -306,7 +332,7 @@ describe("exchange orders", () => {
     const { app } = await makeTestApp();
     const owner = await fundedKey(app);
     const stranger = await fundedKey(app);
-    const placed = await place(app, owner, { market: "BTC-USDT", side: "buy", type: "limit", price: "70000000000", quantity: "100000" });
+    const placed = await place(app, owner, { market: "BTC-USDT", side: "buy", type: "limit", price: "70000000000", quantity: "100000", client_order_id: "scope-lookup-1" });
     expect(placed.status).toBe(201);
 
     expect((await getOrder(app, stranger, placed.body.id as string)).status).toBe(404);
@@ -320,9 +346,9 @@ describe("exchange orders", () => {
     const { app } = await makeTestApp();
     const buyer = await fundedKey(app);
     const seller = await fundedKey(app);
-    const rest = await place(app, seller, { market: "BTC-USDT", side: "sell", type: "limit", price: "71000000000", quantity: "100000" });
+    const rest = await place(app, seller, { market: "BTC-USDT", side: "sell", type: "limit", price: "71000000000", quantity: "100000", client_order_id: "mytrades-rest-1" });
     expect(rest.status).toBe(201);
-    const taker = await place(app, buyer, { market: "BTC-USDT", side: "buy", type: "limit", price: "71000000000", quantity: "100000" });
+    const taker = await place(app, buyer, { market: "BTC-USDT", side: "buy", type: "limit", price: "71000000000", quantity: "100000", client_order_id: "mytrades-taker-1" });
     expect(taker.status).toBe(201);
     expect(taker.body.status).toBe("filled");
 
@@ -350,7 +376,7 @@ describe("exchange orders", () => {
   it("reset cancels every open order through cancel_order before releasing anything else", async () => {
     const { app } = await makeTestApp();
     const k = await fundedKey(app);
-    const placed = await place(app, k, { market: "BTC-USDT", side: "buy", type: "limit", price: "72000000000", quantity: "100000" });
+    const placed = await place(app, k, { market: "BTC-USDT", side: "buy", type: "limit", price: "72000000000", quantity: "100000", client_order_id: "reset-cancel-1" });
     expect(placed.status).toBe(201);
 
     const res = await request(app).post("/v1/exchange/reset").set(sign(k, "POST", "/v1/exchange/reset")).send();

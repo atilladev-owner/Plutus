@@ -207,7 +207,7 @@ describe("exchange invariants under a randomised trading session", () => {
       let cancelledOnPlace = 0;
       const rejections: Record<string, number> = {};
 
-      for (const op of ops) {
+      for (const [opIndex, op] of ops.entries()) {
         const k = keys[op.keyIdx]!;
         if (op.kind === "cancel") {
           const list = openOrders[op.keyIdx]!;
@@ -225,7 +225,13 @@ describe("exchange invariants under a randomised trading session", () => {
 
         const timeInForce = op.type === "market" ? "IOC" : op.timeInForce;
         const postOnly = op.type === "market" ? false : op.postOnly;
-        const body: Record<string, unknown> = { market: op.market, side: op.side, type: op.type, time_in_force: timeInForce, post_only: postOnly };
+        // Whole branch review, finding 2: a placement needs a replay handle. Index based,
+        // not random, so it stays unique and deterministic across this fixed, non shrinking
+        // 1,300 op sequence without ever colliding with itself.
+        const body: Record<string, unknown> = {
+          market: op.market, side: op.side, type: op.type, time_in_force: timeInForce, post_only: postOnly,
+          client_order_id: `prop-${opIndex}`,
+        };
         if (op.type === "limit") {
           body.price = priceFor(op.market, op.offsetBps).toString();
           body.quantity = (BigInt(op.lots) * LOT[op.market]).toString();

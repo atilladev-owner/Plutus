@@ -276,7 +276,7 @@
         <h3>Journal and chain</h3>
         <p>Every write appends one entry to that ledger's journal, and every entry carries the hash of the entry before it. Tamper with one entry, even a value nobody reads day to day, and every entry after it fails to recompute. The verify endpoint walks the whole chain and reports the first place it breaks, not just whether today's balances look right.</p>
         <h3>Matching</h3>
-        <p>An order for a market takes that market's own lock before anything else happens to it, so two orders on the same market are always resolved one at a time, never as a race. The book is walked in price time priority: the best resting price fills first, then the next, until the incoming order is filled or nothing better is left to trade against. Every fill posts one ledger transfer, three legs: the quote asset to the seller, a fee to the house, and the base asset to the buyer.</p>
+        <p>An order for a market takes that market's own lock before anything else happens to it, so two orders on the same market are always resolved one at a time, never as a race. The book is walked in price time priority: the best resting price fills first, then the next, until the incoming order is filled or nothing better is left to trade against. Every fill posts one ledger transfer, three legs: the quote asset to the seller, a fee to the house, and the base asset to the buyer. A market order carries no price protection: it walks the book until its amount is spent with no worst price bound, so on a thin book it can fill far from the last traded price; a limit order is the way to bound it.</p>
         <h3>The house</h3>
         <p>The house is an ordinary key with ordinary balances, not a hidden privileged account. It quotes a ladder of five bids and five asks around the current reference price only when a request actually looks at the market, and lets that ladder go stale otherwise. There is no background loop pretending to be a market that never sleeps.</p>
       </section>
@@ -318,15 +318,15 @@ curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/verify -H "Authoriz
         <div class="block"><pre><code>1767225600000
 POST
 /v1/exchange/orders
-{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000"}</code></pre></div>
-        <p><code>signRequest</code> (<code>src/platform/signing.ts</code>) is what actually produced the header below from those bytes and that secret.</p>
-        <div class="block"><pre><code>BODY='{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000"}'
+{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000","client_order_id":"readme-worked-example"}</code></pre></div>
+        <p><code>signRequest</code> (<code>src/platform/signing.ts</code>) is what actually produced the header below from those bytes and that secret. <code>client_order_id</code> travels in the body: a placement needs it, or an <code>Idempotency-Key</code> header, or the server refuses it with <code>validation_failed</code>.</p>
+        <div class="block"><pre><code>BODY='{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000","client_order_id":"readme-worked-example"}'
 curl -s -X POST https://plutus-ten-eta.vercel.app/v1/exchange/orders \
   -H "Content-Type: application/json" \
   -H "X-Plutus-Key-Id: key_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a" \
   -H "X-Plutus-Timestamp: 1767225600000" \
   -H "X-Plutus-Recv-Window: 5000" \
-  -H "X-Plutus-Signature: 16b66c8f8680c4b9c8208e70f9abafa7821eeb9eafa3dba686fe0b4f9a0dbbbc" \
+  -H "X-Plutus-Signature: ee35d7b3fbfbd93a8fcb5048280505d674ad0432435614ad056d50edbdee0832" \
   -d "$BODY"</code></pre></div>
         <p><code>docs/place-order.mjs</code> in the repository reimplements this with nothing but <code>node:crypto</code>, reads a key id and secret from the environment, and places one real order against the live host from any machine, including one that has never cloned this repository.</p>
 
@@ -375,6 +375,7 @@ POST
               <tr><td>Markets list</td><td>free, no weight; cached 2 seconds</td></tr>
               <tr><td>Book, trades, ticker</td><td>5 each, charged per address; cached 2 seconds</td></tr>
               <tr><td>Candles</td><td>10, charged per address; cached 2 seconds</td></tr>
+              <tr><td>Stream opens</td><td>12 per minute per address</td></tr>
               <tr><td>Concurrent streams</td><td>10 per address</td></tr>
               <tr><td>Public exchange verify</td><td>2 per minute per address</td></tr>
             </tbody>

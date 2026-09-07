@@ -9,6 +9,15 @@ import { withTx } from "../../src/db/pool.js";
 import { newId } from "../../src/domain/ids.js";
 import { placeOrder, cancelOrder, exchangeFaucet, MARKETS, type PlaceOrderInput } from "../../src/db/exchange.js";
 import { streamOptions, STREAM_DEFAULTS } from "../../src/routes/exchange-stream.js";
+import type { RateLimiter } from "../../src/platform/ratelimit.js";
+
+// Every scenario in this file but one shares a single server and, with it, a single
+// underlying rate limiter instance; overridden to never limit, the same way
+// tests/property/exchange.property.test.ts overrides it, so the volume of stream opens
+// this file's own replay, tail and concurrency scenarios generate never trips the stream
+// bucket added below. That bucket gets its own isolated app and limiter instead, in the one
+// test written to exercise it.
+const noRateLimits: RateLimiter = { limit: async () => ({ ok: true, limit: 1_000_000, remaining: 1_000_000, resetAt: Date.now() + 1000 }) };
 
 // The public market event stream, task 8, spec 10.7 shipped as SSE rather than a WebSocket
 // upgrade. Every replay and tail scenario below places real orders through the same
@@ -144,13 +153,13 @@ function connectSse(port: number, qs: string): Promise<{ req: http.ClientRequest
   });
 }
 
-function getJson(port: number, qs: string): Promise<{ status: number; body: unknown }> {
+function getJson(port: number, qs: string): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: unknown }> {
   return new Promise((resolve, reject) => {
     http.get({ host: "127.0.0.1", port, path: `/v1/exchange/stream?${qs}` }, (res) => {
       let data = "";
       res.setEncoding("utf8");
       res.on("data", (chunk: string) => { data += chunk; });
-      res.on("end", () => resolve({ status: res.statusCode ?? 0, body: data ? JSON.parse(data) : null }));
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: data ? JSON.parse(data) : null }));
     }).on("error", reject);
   });
 }
@@ -170,7 +179,7 @@ describe("GET /v1/exchange/stream", () => {
 
   beforeAll(async () => {
     await resetExchangeBooks();
-    const { app } = await makeTestApp();
+    const { app } = await makeTestApp({ limiter: noRateLimits });
     server = app.listen(0);
     port = (server.address() as AddressInfo).port;
   });
@@ -358,6 +367,36 @@ describe("GET /v1/exchange/stream", () => {
       }
     } finally {
       await releasePrivateMarket(symbol);
+    }
+  });
+
+  // Whole branch review, finding 3: the concurrency cap above is a plain in process Map,
+  // so it only ever protects the one running instance, never the address itself across a
+  // deploy with more than one. A 12 opens a minute bucket through the shared rate limiter
+  // (memory here, Upstash in production) closes that gap, charged before the local
+  // concurrency check ever runs. This scenario gets its own app and server, with the real
+  // default MemoryRateLimiter rather than the noRateLimits override every other scenario in
+  // this file uses (so their own volume of opens never touches this bucket), and closes
+  // each of the first twelve opens before starting the next, so the ten concurrent cap
+  // never has a chance to fire first for a different reason.
+  it("answers 429 for the thirteenth stream open in a minute from one address, with the RateLimit headers", async () => {
+    const { app: limitedApp } = await makeTestApp();
+    const limitedServer = limitedApp.listen(0);
+    const limitedPort = (limitedServer.address() as AddressInfo).port;
+    try {
+      const before = await currentSeq("BTC-USDT");
+      for (let i = 0; i < 12; i++) {
+        const { req } = await connectSse(limitedPort, `channels=book:BTC-USDT&since=${before}`);
+        req.destroy();
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+      const thirteenth = await getJson(limitedPort, `channels=book:BTC-USDT&since=${before}`);
+      expect(thirteenth.status).toBe(429);
+      expect(thirteenth.headers["ratelimit-limit"]).toBe("12");
+      expect(thirteenth.headers["ratelimit-remaining"]).toBe("0");
+      expect(Number(thirteenth.headers["retry-after"])).toBeGreaterThan(0);
+    } finally {
+      await new Promise<void>((resolve) => limitedServer.close(() => resolve()));
     }
   });
 });

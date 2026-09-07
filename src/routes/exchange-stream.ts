@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { ApiError, validation } from "../domain/errors.js";
 import { MARKETS } from "../db/exchange.js";
+import { limitWithTimeout, applyRateLimitHeaders } from "../platform/ratelimit.js";
 import type { AppDeps } from "../deps.js";
 
 /**
@@ -186,6 +187,18 @@ export async function streamHandler(req: Request, res: Response, deps: AppDeps):
   const since = parseSince(req.query.since);
 
   const ip = req.ip ?? "unknown";
+
+  // The stream bucket (spec 10.7): 12 opens a minute per address, charged through the same
+  // shared limiter every other rate limited route uses (memory in tests, Upstash in
+  // production), before the local concurrency check below ever runs. A caller rate limited
+  // here never reaches trackConnection, so it never counts against the concurrency cap
+  // either; the two are independent ceilings, not one enforcing the other.
+  const rateResult = await limitWithTimeout(deps, "stream", ip);
+  const resetSeconds = applyRateLimitHeaders(res, rateResult);
+  if (!rateResult.ok) {
+    throw new ApiError(429, "rate_limited", "at most 12 stream opens per minute per address", undefined, { "Retry-After": String(resetSeconds) });
+  }
+
   if ((activeStreams.get(ip) ?? 0) >= MAX_CONCURRENT_STREAMS_PER_IP) {
     throw new ApiError(429, "rate_limited", "at most 10 concurrent streams per address");
   }
@@ -363,7 +376,7 @@ export function mountStream(app: Express, deps: AppDeps): void {
 export const streamOpenApiPath: Record<string, Record<string, unknown>> = {
   get: {
     summary:
-      "The public market event stream over Server-Sent Events (spec 10.7; shipped as SSE, not the WebSocket the spec section is headed with, since no WebSocket upgrade reaches an Express app deployed as a Vercel Function on this account). Replays every market_events row after since for the subscribed channels, in seq order, a page at a time, then tails once a second. book:SYMBOL carries order.accepted as {type,order_id,side,order_type,at}, order.cancelled as {type,order_id,reason,at}, and order.filled as {type,price,quantity,notional,at}. trades:SYMBOL carries only order.filled, as {price,quantity,notional,at}. at is the row's own created_at as an ISO string. A slow reader is paused rather than dropped: nothing is skipped and nothing is sent twice once it catches up. A heartbeat comment every 15 seconds; a reconnect event and the end of the response at four minutes fifty seconds. Public, no key, at most 10 concurrent streams per address.",
+      "The public market event stream over Server-Sent Events (spec 10.7; shipped as SSE, not the WebSocket the spec section is headed with, since no WebSocket upgrade reaches an Express app deployed as a Vercel Function on this account). Replays every market_events row after since for the subscribed channels, in seq order, a page at a time, then tails once a second. book:SYMBOL carries order.accepted as {type,order_id,side,order_type,at}, order.cancelled as {type,order_id,reason,at}, and order.filled as {type,price,quantity,notional,at}. trades:SYMBOL carries only order.filled, as {price,quantity,notional,at}. at is the row's own created_at as an ISO string. A slow reader is paused rather than dropped: nothing is skipped and nothing is sent twice once it catches up. A heartbeat comment every 15 seconds; a reconnect event and the end of the response at four minutes fifty seconds. Public, no key, at most 12 opens a minute per address and at most 10 concurrent streams per address.",
     tags: ["Exchange"],
     operationId: "get_v1_exchange_stream",
     parameters: [

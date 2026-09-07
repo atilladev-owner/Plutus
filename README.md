@@ -50,19 +50,19 @@ The exact bytes HMAC SHA256 signs, keyed by the SHA-256 digest of that secret, o
 1767225600000
 POST
 /v1/exchange/orders
-{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000"}
+{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000","client_order_id":"readme-worked-example"}
 ```
 
-`signRequest` (`src/platform/signing.ts`) is what actually produced the header below from those bytes and that secret.
+`signRequest` (`src/platform/signing.ts`) is what actually produced the header below from those bytes and that secret. `client_order_id` travels in the body: a placement needs it, or an `Idempotency-Key` header, or the server refuses it with `validation_failed`.
 
 ```bash
-BODY='{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000"}'
+BODY='{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000","client_order_id":"readme-worked-example"}'
 curl -s -X POST https://plutus-ten-eta.vercel.app/v1/exchange/orders \
   -H "Content-Type: application/json" \
   -H "X-Plutus-Key-Id: key_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a" \
   -H "X-Plutus-Timestamp: 1767225600000" \
   -H "X-Plutus-Recv-Window: 5000" \
-  -H "X-Plutus-Signature: 16b66c8f8680c4b9c8208e70f9abafa7821eeb9eafa3dba686fe0b4f9a0dbbbc" \
+  -H "X-Plutus-Signature: ee35d7b3fbfbd93a8fcb5048280505d674ad0432435614ad056d50edbdee0832" \
   -d "$BODY"
 ```
 
@@ -73,6 +73,8 @@ curl -s -X POST https://plutus-ten-eta.vercel.app/v1/exchange/orders \
 **The house, plainly.** There is no background loop pretending to be a market. The house is an ordinary key with ordinary balances. When a request looks at a market, a book read, a ticker, a trade list, or an order placement, and that market's quotes are more than 15 seconds old, the house first cancels its own resting orders and places five fresh bids and five fresh asks around the current Coinbase spot price, from 10 to 30 basis points out on each side, before the request that triggered the refresh continues. A fill against the house is a real fill through the same ledger function every other fill uses. Nobody's money moves because a robot decided to trade; it moves because a real request found a stale ladder and asked for a fresh one.
 
 **Throughput, honestly.** Matching runs inside one Postgres function under an advisory lock per market, which serialises every order on that market against every other. That is tens of orders per second per market, not thousands. It is the right trade for a system whose real claim is that the books never lie, not that it is fast.
+
+**Market orders, plainly.** A market order carries no price protection: it walks the book until its amount is spent with no worst price bound, so on a thin book it can fill far from the last traded price. A limit order is the way to bound it.
 
 **The stream.** `GET /v1/exchange/stream` is Server-Sent Events, not a WebSocket, because an SSE stream is a plain HTTP response and is certain to reach an Express app running as a Vercel Function, where a WebSocket upgrade is not. A client subscribes with `?channels=book:BTC-USDT,trades:BTC-USDT&since=<seq>`, and the server replays every event after `since` first, then tails new ones every second, with a heartbeat comment every 15 seconds. At four minutes fifty seconds the server sends a `reconnect` event and ends the response; the client reconnects with the last `seq` it saw and, because sequence numbers never skip, misses nothing.
 
@@ -115,6 +117,7 @@ Ceilings apply to sandbox keys and their ledgers. A ceiling hit is a 409 `sandbo
 | Markets list | free, no weight; cached 2 seconds |
 | Book, trades, ticker | 5 each, charged per address; cached 2 seconds |
 | Candles | 10, charged per address; cached 2 seconds |
+| Stream opens | 12 per minute per address |
 | Concurrent streams | 10 per address |
 | Public exchange verify | 2 per minute per address |
 

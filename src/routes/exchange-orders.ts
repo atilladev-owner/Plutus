@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Response } from "express";
 import { defineRoute, parsePage } from "../platform/route.js";
 import { withTx } from "../db/pool.js";
-import { notFound } from "../domain/errors.js";
+import { notFound, validation } from "../domain/errors.js";
 import { isId, newId } from "../domain/ids.js";
 import { stableJson } from "../domain/canonical.js";
 import { complete } from "../db/idempotency.js";
@@ -80,6 +80,17 @@ export const exchangeOrderRoutes = [
     auth: "signed", scope: "exchange:trade", weight: 1, placement: true, idempotent: true, status: 201,
     body: OrderCreate, response: OrderOut,
     handler: async ({ key, body, req, res, deps, tx }) => {
+      // Whole branch review, finding 2: a placement needs a replay handle, spec 10.8's own
+      // closing line, so a signed retry after a dropped response is always safe to resend
+      // rather than risking a duplicate order. client_order_id in the body or an
+      // Idempotency-Key header, either one; checked first, before ensureFreshLadder or any
+      // other work, so a request carrying neither never spends a round trip to the house
+      // ladder or the database to be told its shape is wrong.
+      if (!body.client_order_id && !req.header("idempotency-key")) {
+        throw validation("a placement needs client_order_id in the body or an Idempotency-Key header", [
+          { path: "client_order_id", message: "send client_order_id in the body or an Idempotency-Key header" },
+        ]);
+      }
       // Spec 10.5: the house has no loop, it quotes when someone is looking. A placement
       // is one of the moments that looks, so the ladder on this order's own market is
       // refreshed first, before place_order ever runs, when it is stale.

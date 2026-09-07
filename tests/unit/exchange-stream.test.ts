@@ -23,6 +23,7 @@ class FakeRes extends EventEmitter {
   constructor(private readonly writeReturn: (callNumber: number) => boolean) { super(); }
   set(): this { return this; }
   status(): this { return this; }
+  setHeader(): this { return this; }
   flushHeaders(): void { /* no real headers to flush */ }
   write(chunk: string): boolean {
     this.written.push(chunk);
@@ -57,7 +58,8 @@ describe("streamHandler backpressure", () => {
     const poolQuery = vi.fn().mockResolvedValue({ rows });
     const fakePool = { query: poolQuery } as unknown as Pool;
     const fakeLogger = { error: vi.fn() } as unknown as AppDeps["logger"];
-    const fakeDeps = { pool: fakePool, logger: fakeLogger } as unknown as AppDeps;
+    const fakeLimiter = { limit: async () => ({ ok: true, limit: 12, remaining: 11, resetAt: Date.now() + 60_000 }) } as unknown as AppDeps["limiter"];
+    const fakeDeps = { pool: fakePool, logger: fakeLogger, limiter: fakeLimiter } as unknown as AppDeps;
 
     // The first write (row 1's book delta) reports backpressure; every later write is
     // accepted, so anything beyond one written frame before drain fires would mean the
@@ -93,7 +95,10 @@ describe("streamHandler backpressure", () => {
 
   it("registers the drain listener when the heartbeat itself is the write that pauses", async () => {
     const poolQuery = vi.fn().mockResolvedValue({ rows: [] });
-    const fakeDeps = { pool: { query: poolQuery } as unknown as Pool, logger: { error: vi.fn() } as unknown as AppDeps["logger"] } as unknown as AppDeps;
+    const fakeLimiter = { limit: async () => ({ ok: true, limit: 12, remaining: 11, resetAt: Date.now() + 60_000 }) } as unknown as AppDeps["limiter"];
+    const fakeDeps = {
+      pool: { query: poolQuery } as unknown as Pool, logger: { error: vi.fn() } as unknown as AppDeps["logger"], limiter: fakeLimiter,
+    } as unknown as AppDeps;
     const previous = streamOptions.heartbeatIntervalMs;
     streamOptions.heartbeatIntervalMs = 15;
     try {

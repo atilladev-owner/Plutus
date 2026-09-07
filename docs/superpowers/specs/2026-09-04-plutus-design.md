@@ -459,7 +459,7 @@ Trading endpoints require signed requests, not a bearer token.
 | `X-Plutus-Recv-Window` | optional, milliseconds, default 5,000, maximum 60,000 |
 | `X-Plutus-Signature` | hex HMAC SHA256 with the key secret over `timestamp + "\n" + METHOD + "\n" + path + "\n" + body` |
 
-The server refuses a timestamp outside the window with `timestamp_out_of_window` and a mismatch with `invalid_signature`, both 401. The secret never travels. Replays inside the window are made harmless by `client_order_id` on orders and `Idempotency-Key` on everything else.
+The server refuses a timestamp outside the window with `timestamp_out_of_window` and a mismatch with `invalid_signature`, both 401. The secret never travels. Replays inside the window are made harmless by `client_order_id` on orders and `Idempotency-Key` on everything else; placing an order requires one of the two, refused with `validation_failed` (422) naming both when neither is sent.
 
 ### 10.9 Endpoint weights
 
