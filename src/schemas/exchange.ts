@@ -59,8 +59,12 @@ export const OrderOut = z.object({
 });
 export const OrdersOut = z.object({ data: z.array(OrderOut) });
 
+// buy_order_id and sell_order_id are nullable: a trade outlives either order, so once one
+// side's order is deleted (an idle sandbox key cascading away its own orders,
+// db/migrations/0017_trades_survive_key_deletion.sql) that side reads null rather than an
+// id nothing backs any more.
 export const TradeOut = z.object({
-  id: z.string(), market: z.string(), seq: z.string(), buy_order_id: z.string(), sell_order_id: z.string(),
+  id: z.string(), market: z.string(), seq: z.string(), buy_order_id: z.string().nullable(), sell_order_id: z.string().nullable(),
   price: z.string(), quantity: z.string(), notional: z.string(), buyer_fee: z.string(), seller_fee: z.string(),
   transfer_id: z.string(), side: OrderSide, created_at: Iso,
 });

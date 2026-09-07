@@ -128,7 +128,19 @@ async function sweep({ deps, req }: { deps: AppDeps; req: import("express").Requ
     for (const id of await L.ledgersWithExpiredHolds(c)) n += await L.expireHolds(c, id, null);
     return n;
   });
-  const idle = await withTx(deps.pool, (c) => L.deleteIdleSandbox(c));
+  // Whole branch review, finding 1: a trader's fill can leave orders.key_id's cascade
+  // reaching a trade this transaction has no other way to touch, and used to fail the
+  // delete outright (0017_trades_survive_key_deletion.sql fixes the schema side of that).
+  // This try/catch is the other half: whatever still goes wrong deleting idle sandbox data
+  // is logged and never allowed to end the sweep early, the same discipline
+  // refreshColdMarkets already applies to one market's own ladder refresh failing. Every
+  // purge after this one, the house ladder refresh and the top up, still runs; the caller
+  // sees zero for both counts on a failure, an honest answer since nothing was deleted, and
+  // the next sweep tries again against whatever backlog is still there.
+  const idle = await withTx(deps.pool, (c) => L.deleteIdleSandbox(c)).catch((err: unknown) => {
+    deps.logger.error({ err: (err as Error).message }, "idle sandbox purge failed; the next sweep tries again");
+    return { ledgers: 0, keys: 0 };
+  });
   const out = await withTx(deps.pool, async (c) => {
     const events = await purgeOld(c);
     const idem = await purgeExpired(c);

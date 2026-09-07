@@ -10,7 +10,7 @@ import { generateSecret } from "../../src/platform/auth.js";
 import { insertKey } from "../../src/db/keys.js";
 import * as L from "../../src/db/ledger.js";
 import { resetExchangeBooks, verifyExchangeLedger } from "../helpers/exchange.js";
-import { EXCHANGE_LEDGER_ID } from "../../src/db/exchange.js";
+import { EXCHANGE_LEDGER_ID, placeOrder, exchangeReset, type PlaceOrderInput } from "../../src/db/exchange.js";
 
 // 100,000 USDT (exponent 6), 1 BTC and 10 ETH (exponent 8 each) in minor units, spec 10.2.
 const FAUCET_USDT = "100000000000";
@@ -228,5 +228,37 @@ describe("exchange wallets", () => {
     } finally {
       after.release();
     }
+  });
+
+  // Whole branch review, finding 5 (minor): exchange_reset used to rely entirely on its
+  // caller, the reset route above, to cancel every open order first; called on its own it
+  // left a resting order's hold never released and its balance never rebalanced.
+  // 0017_trades_survive_key_deletion.sql has exchange_reset cancel every open or partially
+  // filled order of the key itself, through cancel_order, right after locking every
+  // market. Calling exchangeReset directly, bypassing the route's own cancel loop
+  // entirely, is what proves the function is self sufficient now rather than merely still
+  // working because its one real caller happens to cancel first.
+  it("cancels a resting order itself when exchangeReset is called directly, not only through the route's own cancel loop", async () => {
+    const { app } = await makeTestApp();
+    const k = await mintKey(app);
+    await faucet(app, k);
+
+    const input: PlaceOrderInput = {
+      keyId: k.id, market: "BTC-USDT", clientOrderId: null, side: "buy", type: "limit",
+      timeInForce: "GTC", postOnly: false, price: "990000000000", quantity: "100000", quoteAmount: null,
+    };
+    const placed = await placeOrder(testPool(), input);
+    expect(placed.order.status).toBe("open");
+
+    await withTx(testPool(), (c) => exchangeReset(c, k.id));
+
+    const { rows } = await testPool().query<{ status: string }>("select status from orders where id = $1", [placed.order.id]);
+    expect(rows[0]?.status).toBe("cancelled");
+    const { rows: openRows } = await testPool().query<{ n: string }>(
+      "select count(*)::text as n from orders where key_id = $1 and status in ('open', 'partially_filled')", [k.id]);
+    expect(openRows[0]?.n).toBe("0");
+
+    const report = await verifyExchangeLedger();
+    expect(report).toMatchObject({ ok: true, chain_ok: true, sequence_ok: true, replay_matches: true });
   });
 });

@@ -91,8 +91,13 @@ export interface OrderRow {
   created_at: string; updated_at: string;
 }
 
+/** buy_order_id and sell_order_id are nullable (db/migrations/0017_trades_survive_key_deletion.sql):
+ * a trade outlives the order on either side of it, so once that order (or the key it
+ * belonged to) is gone, this side reads null rather than pointing at a row that no longer
+ * exists. The public tape (src/db/market-data.ts) never carries either column, so it is
+ * unaffected either way. */
 export interface TradeRow {
-  id: string; market: string; seq: string; buy_order_id: string; sell_order_id: string;
+  id: string; market: string; seq: string; buy_order_id: string | null; sell_order_id: string | null;
   price: string; quantity: string; notional: string; buyer_fee: string; seller_fee: string;
   transfer_id: string; created_at: string;
 }
@@ -253,15 +258,25 @@ export async function listOpenOrderIds(c: PoolClient, keyId: string, market: str
 export interface MyTradeRow extends TradeRow { side: OrderSide }
 
 /** Trades where the key was buyer or seller, side always from the key's own point of view.
- * A key is never both (self_trade forbids it), so the case expression is never ambiguous. */
+ * A key is never both (self_trade forbids it), so the case expression is never ambiguous.
+ *
+ * Left joins, not inner joins (whole branch review, finding 1): buy_order_id or
+ * sell_order_id can be null, the order it named deleted along with an idle key
+ * (0017_trades_survive_key_deletion.sql). An inner join to the deleted side would drop the
+ * whole row from an inner join's result, hiding the trade from the surviving
+ * counterparty's own history, exactly the trade they still need to see. bo or so reads as
+ * every column null on that side, which is why side is read off whichever of the two
+ * actually matched $1, not off the deleted side: the caller's own order, the reason they
+ * are allowed to see this trade at all, is never the side that was deleted, since the
+ * account whose key still exists is the one asking. */
 export async function listMyTrades(c: PoolClient, keyId: string, page: Page): Promise<Paged<MyTradeRow>> {
   const { rows } = await c.query<Cursored<MyTradeRow>>(
     `select t.id, t.market, t.seq, t.buy_order_id, t.sell_order_id, t.price, t.quantity, t.notional,
        t.buyer_fee, t.seller_fee, t.transfer_id, fmt_ts(t.created_at) as created_at, t.created_at::text as cursor_t,
        case when bo.key_id = $1 then 'buy' else 'sell' end as side
      from trades t
-     join orders bo on bo.id = t.buy_order_id
-     join orders so on so.id = t.sell_order_id
+     left join orders bo on bo.id = t.buy_order_id
+     left join orders so on so.id = t.sell_order_id
      where (bo.key_id = $1 or so.key_id = $1)
        and ($2::timestamptz is null or (t.created_at, t.id) < ($2::timestamptz, $3::text))
      order by t.created_at desc, t.id desc limit $4`,
