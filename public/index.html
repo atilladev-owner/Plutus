@@ -4,418 +4,326 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Plutus</title>
-<meta name="description" content="A reference guide to the Plutus ledger and exchange API: how it works, what to build with it, and how to verify it yourself.">
+<meta name="description" content="A live look at the Plutus ledger and exchange API: how it works, what to build with it, and how to verify it yourself.">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --ground: #FBFAF7;
-    --ink: #1F2A24;
-    --accent: #1C6E4A;
-    --muted: #5D6B63;
-    --panel: #F2F2EF;
-    --border: rgba(31, 42, 36, 0.14);
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --ground: #141915;
-      --ink: #EEF2EE;
-      --accent: #7CC7A0;
-      --muted: #93AC9F;
-      --panel: #1F2420;
-      --border: rgba(238, 242, 238, 0.16);
-    }
-  }
-  *, *::before, *::after { box-sizing: border-box; }
-  html { background: var(--ground); }
-  body {
-    margin: 0;
-    background: var(--ground);
-    color: var(--ink);
-    font-family: "Nunito", system-ui, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
-  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
-  a:hover { color: var(--ink); }
-  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
-
-  h1, h2, h3 {
-    font-family: "Outfit", system-ui, sans-serif;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    color: var(--ink);
-  }
-
-  header.top { border-bottom: 1px solid var(--border); }
-  .top-inner {
-    max-width: 1120px;
-    margin: 0 auto;
-    padding: 22px 24px;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 14px 28px;
-  }
-  .brand-block h1 {
-    font-size: 20px;
-    margin: 0;
-  }
-  .brand-block p {
-    margin: 4px 0 0;
-    font-size: 14px;
-    color: var(--muted);
-    max-width: 46ch;
-  }
-  nav.top-links {
-    display: flex;
-    flex-wrap: wrap;
-    column-gap: 20px;
-    row-gap: 6px;
-    font-family: "Outfit", system-ui, sans-serif;
-    font-size: 14px;
-  }
-
-  .layout {
-    max-width: 1120px;
-    margin: 0 auto;
-    padding: 40px 24px 96px;
-    display: grid;
-    grid-template-columns: 260px minmax(0, 1fr);
-    gap: 16px 56px;
-    align-items: start;
-  }
-  aside.side {
-    position: sticky;
-    top: 28px;
-  }
-  aside.side .side-label {
-    font-family: "Outfit", system-ui, sans-serif;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin: 0 0 12px;
-  }
-  aside.side ol {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  aside.side a {
-    display: block;
-    padding: 7px 10px;
-    margin-left: -10px;
-    border-radius: 10px;
-    font-family: "Outfit", system-ui, sans-serif;
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--ink);
-    text-decoration: none;
-    border-left: 2px solid transparent;
-  }
-  aside.side a:hover { color: var(--accent); background: var(--panel); }
-  aside.side a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-
-  main.content { max-width: 65ch; min-width: 0; }
-  main.content section {
-    padding-bottom: 52px;
-    margin-bottom: 52px;
-    border-bottom: 1px solid var(--border);
-  }
-  main.content section:last-of-type {
-    border-bottom: none;
-    margin-bottom: 0;
-    padding-bottom: 0;
-  }
-  h2 { font-size: 25px; margin: 0 0 18px; }
-  h3 { font-size: 16px; margin: 30px 0 10px; }
-  h3:first-child { margin-top: 0; }
-  p { font-size: 16px; line-height: 1.75; margin: 0 0 16px; }
-  p:last-child { margin-bottom: 0; }
-  ul.plain, ol.plain { margin: 0 0 16px; padding-left: 22px; }
-  ul.plain li, ol.plain li { font-size: 16px; line-height: 1.7; margin-bottom: 8px; }
-
-  p.lede {
-    font-family: "Outfit", system-ui, sans-serif;
-    font-weight: 500;
-    font-size: clamp(18px, 2.2vw, 21px);
-    line-height: 1.5;
-    margin: 0 0 20px;
-  }
-
-  code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    background: var(--panel);
-    padding: 1px 6px;
-    border-radius: 6px;
-    font-size: 0.9em;
-  }
-  .block {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 20px 22px;
-    overflow-x: auto;
-    margin: 0 0 24px;
-  }
-  .block pre {
-    margin: 0;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 13.5px;
-    line-height: 1.75;
-    white-space: pre;
-  }
-  .block code { background: none; padding: 0; border-radius: 0; font-size: inherit; }
-  .block .rem { color: var(--muted); }
-
-  .label {
-    font-family: "Outfit", system-ui, sans-serif;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin: 0 0 12px;
-  }
-
-  .table-wrap {
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    overflow: hidden;
-    overflow-x: auto;
-    margin: 0 0 24px;
-  }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 420px; }
-  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  tr:last-child td { border-bottom: none; }
-  th {
-    font-family: "Outfit", system-ui, sans-serif;
-    font-weight: 600;
-    font-size: 12px;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--muted);
-    background: var(--panel);
-  }
-  td code { font-size: 0.85em; }
-
-  p.licence { font-size: 13px; line-height: 1.6; color: var(--muted); }
-  p.licence a { color: var(--muted); }
-  p.licence a:hover { color: var(--ink); }
-
-  @media (max-width: 900px) {
-    .layout {
-      grid-template-columns: 1fr;
-      padding-top: 28px;
-    }
-    aside.side {
-      position: static;
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 20px;
-    }
-    aside.side ol {
-      flex-direction: row;
-      flex-wrap: wrap;
-      column-gap: 6px;
-      row-gap: 4px;
-    }
-    aside.side a { margin-left: 0; padding: 6px 8px; }
-  }
-</style>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700&family=Nunito:wght@400;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
 </head>
 <body>
-  <header class="top">
-    <div class="top-inner">
-      <div class="brand-block">
-        <h1>plutus</h1>
-        <p>A ledger you can audit and an exchange you can trade against.</p>
-      </div>
-      <nav class="top-links" aria-label="Project links">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<!--
+  Icons on this page are inline SVG redrawn from Lucide (https://lucide.dev), used under the
+  MIT licence. Recoloured with currentColor, one stroke weight, each with a text label.
+-->
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="wordmark" href="/">plutus</a>
+    <div class="topbar-scroll">
+      <nav class="topbar-nav" aria-label="Site">
+        <a href="/" aria-current="page">Home</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/exchange">Exchange</a>
+        <a href="/use-cases">Use cases</a>
+        <a href="/set-up">Set up</a>
+        <a href="/limits">Limits</a>
         <a href="/docs">Docs</a>
-        <a href="/openapi.json">OpenAPI</a>
-        <a href="/health">Health</a>
-        <a href="https://github.com/atilladev-owner/Plutus">Source on GitHub</a>
       </nav>
     </div>
-  </header>
-
-  <div class="layout">
-    <aside class="side">
-      <p class="side-label">Sections</p>
-      <ol class="plain">
-        <li><a href="#what-it-is">What it is</a></li>
-        <li><a href="#how-it-works">How it works</a></li>
-        <li><a href="#what-to-build">What to build with it</a></li>
-        <li><a href="#set-it-up">Set it up</a></li>
-        <li><a href="#limits">Limits</a></li>
-        <li><a href="#verify-it">Verify it</a></li>
-        <li><a href="#source-and-licence">Source and licence</a></li>
-      </ol>
-    </aside>
-
-    <main class="content">
-      <section id="what-it-is">
-        <h2>What it is</h2>
-        <p class="lede">A ledger you can audit and an exchange you can trade against.</p>
-        <p>Plutus is a multi asset ledger, and from milestone two a paper trading exchange, built as a single HTTP API. Mint a key with no signup, open a ledger, and move money between accounts under invariants the database enforces itself rather than application code that might forget to check them.</p>
-        <p>Every amount is an integer count of the asset's smallest unit, never a float. Every write, a transfer, a hold, a capture, an order fill, runs as one Postgres function under row locks, so two requests racing for the same balance or the same market cannot both win. Every write also appends to a hash chained journal, so one request can prove the whole history is intact, not only the balances it left behind.</p>
-        <p>The exchange is built entirely on top of the ledger, not beside it. A fill is a ledger transfer with three legs. The exchange cannot create or destroy money, and its own verify endpoint proves that on demand.</p>
-      </section>
-
-      <section id="how-it-works">
-        <h2>How it works</h2>
-        <h3>The ledger</h3>
-        <p>A ledger holds one or more accounts, each denominated in one asset. A transfer moves money between accounts as a list of legs, all committed together or not at all. Balances only ever change through a transfer, so there is never a code path that edits a balance directly and skips the record of why.</p>
-        <h3>Holds</h3>
-        <p>A hold reserves funds against an account without moving them yet. It is captured, for the amount actually owed, or released back to the account it came from. An exchange order uses a hold the same way: placing a limit buy holds the money it might spend, and a fill draws from that hold rather than the account directly.</p>
-        <h3>Journal and chain</h3>
-        <p>Every write appends one entry to that ledger's journal, and every entry carries the hash of the entry before it. Tamper with one entry, even a value nobody reads day to day, and every entry after it fails to recompute. The verify endpoint walks the whole chain and reports the first place it breaks, not just whether today's balances look right.</p>
-        <h3>Matching</h3>
-        <p>An order for a market takes that market's own lock before anything else happens to it, so two orders on the same market are always resolved one at a time, never as a race. The book is walked in price time priority: the best resting price fills first, then the next, until the incoming order is filled or nothing better is left to trade against. Every fill posts one ledger transfer, three legs: the quote asset to the seller, a fee to the house, and the base asset to the buyer. A market order carries no price protection: it walks the book until its amount is spent with no worst price bound, so on a thin book it can fill far from the last traded price; a limit order is the way to bound it.</p>
-        <h3>The house</h3>
-        <p>The house is an ordinary key with ordinary balances, not a hidden privileged account. It quotes a ladder of five bids and five asks around the current reference price only when a request actually looks at the market, and lets that ladder go stale otherwise. There is no background loop pretending to be a market that never sleeps.</p>
-      </section>
-
-      <section id="what-to-build">
-        <h2>What to build with it</h2>
-        <p>The ledger's primitives, accounts, transfers and holds, are general enough to carry patterns well outside trading. Four worth naming:</p>
-        <h3>Savings groups</h3>
-        <p>A rotating group savings circle: one ledger per group, one account per member. Contributions are transfers from a member's account into a shared pot; a payout on schedule is a transfer back out. The group's own history is the journal, not a spreadsheet someone has to keep honest.</p>
-        <h3>Group expenses</h3>
-        <p>Shared costs between people who trust each other but still want a record: an account per person, an expense recorded as a transfer between whoever paid and whoever owes their share. Who owes what is a balance read, not a reconciliation someone runs at the end of the trip.</p>
-        <h3>Tabs</h3>
-        <p>A running tab at a bar or a café: open it with a hold against the customer's account for a sensible ceiling, capture the exact amount owed when they settle up, release the rest. Nobody's money moves until the tab actually closes.</p>
-        <h3>Deposits</h3>
-        <p>A booking or a rental deposit: a hold placed at the time of booking, captured in full or in part if something was owed against it, released back untouched if it never was. The hold's own state is the answer to whether a deposit is still outstanding.</p>
-      </section>
-
-      <section id="set-it-up">
-        <h2>Set it up</h2>
-        <h3>Mint a key</h3>
-        <p>No signup. A sandbox key comes back from one call, ready to use immediately.</p>
-        <div class="block"><pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/keys</code></pre></div>
-
-        <h3>The first three calls</h3>
-        <p class="label">Thirty seconds</p>
-        <div class="block"><pre><code><span class="rem"># 1. a key, no signup</span>
-curl -s -X POST https://plutus-ten-eta.vercel.app/v1/keys
-<span class="rem"># 2. a ledger and two accounts</span>
-curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"name":"shop"}'
-curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/accounts -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"asset":"GHS","name":"till"}'
-<span class="rem"># 3. money in from the world, then between accounts</span>
-curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -H "Idempotency-Key: fund-1" -d '{"legs":[{"from":"world:GHS","to":"'$TILL'","asset":"GHS","amount":"125000"}]}'
-<span class="rem"># 4. prove the books</span>
-curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/verify -H "Authorization: Bearer $KEY"</code></pre></div>
-
-        <h3>Signing for trading</h3>
-        <p>Exchange trading endpoints sign every request instead of sending a bearer token. Four headers travel together: <code>X-Plutus-Key-Id</code>, <code>X-Plutus-Timestamp</code> in Unix milliseconds, <code>X-Plutus-Recv-Window</code> in milliseconds, and <code>X-Plutus-Signature</code>, a hex HMAC SHA256 over <code>timestamp + "\n" + METHOD + "\n" + path + "\n" + body</code>, keyed by the SHA-256 digest of the key secret rather than the secret itself, since that digest is all the server ever stores. The worked example below uses a key id and secret invented for this page, so the signature can actually be recomputed rather than taken on trust.</p>
-        <p>Key id: <code>key_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a</code>. Secret: <code>pl_test_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a5b6c7d8e9f0a1b2c</code>. This key does not exist. Signing with it authenticates against nothing, live or otherwise. The exact bytes HMAC SHA256 signs, keyed by the SHA-256 digest of that secret, one line for the timestamp, the method, the path and the body, with no trailing newline after the body:</p>
-        <div class="block"><pre><code>1767225600000
-POST
-/v1/exchange/orders
-{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000","client_order_id":"readme-worked-example"}</code></pre></div>
-        <p><code>signRequest</code> (<code>src/platform/signing.ts</code>) is what actually produced the header below from those bytes and that secret. <code>client_order_id</code> travels in the body: a placement needs it, or an <code>Idempotency-Key</code> header, or the server refuses it with <code>validation_failed</code>.</p>
-        <div class="block"><pre><code>BODY='{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000","client_order_id":"readme-worked-example"}'
-curl -s -X POST https://plutus-ten-eta.vercel.app/v1/exchange/orders \
-  -H "Content-Type: application/json" \
-  -H "X-Plutus-Key-Id: key_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a" \
-  -H "X-Plutus-Timestamp: 1767225600000" \
-  -H "X-Plutus-Recv-Window: 5000" \
-  -H "X-Plutus-Signature: ee35d7b3fbfbd93a8fcb5048280505d674ad0432435614ad056d50edbdee0832" \
-  -d "$BODY"</code></pre></div>
-        <p><code>docs/place-order.mjs</code> in the repository reimplements this with nothing but <code>node:crypto</code>, reads a key id and secret from the environment, and places one real order against the live host from any machine, including one that has never cloned this repository.</p>
-
-        <h3>The faucet</h3>
-        <p>A sandbox key funds itself from the world with 100,000 USDT, 1 BTC and 10 ETH, once per 24 hours. It is a signed call like any other trading endpoint, using the same example secret shown above. Its own signed bytes:</p>
-        <div class="block"><pre><code>1767225601000
-POST
-/v1/exchange/faucet
-{}</code></pre></div>
-        <div class="block"><pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/exchange/faucet \
-  -H "Content-Type: application/json" \
-  -H "X-Plutus-Key-Id: key_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a" \
-  -H "X-Plutus-Timestamp: 1767225601000" \
-  -H "X-Plutus-Recv-Window: 5000" \
-  -H "X-Plutus-Signature: 6f36cc5bacc4e1cf5b688405cb7ee1c571ea83efd68a43b31a0ac128ea7f322a" \
-  -d '{}'</code></pre></div>
-      </section>
-
-      <section id="limits">
-        <h2>Limits</h2>
-        <p>Ceilings apply to sandbox keys and their ledgers. A ceiling hit is a 409 <code>sandbox_limit_reached</code> naming the ceiling.</p>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Ceiling</th><th>Value</th></tr></thead>
-            <tbody>
-              <tr><td>Ledgers per key</td><td>10</td></tr>
-              <tr><td>Accounts per ledger</td><td>50</td></tr>
-              <tr><td>Journal entries per ledger</td><td>10,000</td></tr>
-              <tr><td>Webhook endpoints per key</td><td>5</td></tr>
-              <tr><td>Open holds per account</td><td>100</td></tr>
-              <tr><td>Request body</td><td>64 KB</td></tr>
-              <tr><td>Metadata</td><td>20 keys, 500 character values</td></tr>
-              <tr><td>Idle sandbox ledger</td><td>deleted after 14 days without a write</td></tr>
-              <tr><td>Idle sandbox key</td><td>deleted after 30 days without a request, with its ledgers</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p>Exchange trading adds its own ceilings, on top of the ones above.</p>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Exchange ceiling</th><th>Value</th></tr></thead>
-            <tbody>
-              <tr><td>Endpoint weight</td><td>1,200 per minute per key</td></tr>
-              <tr><td>Order placement</td><td>capped separately at 10 per second per key</td></tr>
-              <tr><td>Faucet</td><td>once per 24 hours per sandbox key</td></tr>
-              <tr><td>Markets list</td><td>free, no weight; cached 2 seconds</td></tr>
-              <tr><td>Book, trades, ticker</td><td>5 each, charged per address; cached 2 seconds</td></tr>
-              <tr><td>Candles</td><td>10, charged per address; cached 2 seconds</td></tr>
-              <tr><td>Stream opens</td><td>12 per minute per address</td></tr>
-              <tr><td>Concurrent streams</td><td>10 per address</td></tr>
-              <tr><td>Public exchange verify</td><td>2 per minute per address</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section id="verify-it">
-        <h2>Verify it</h2>
-        <p>Two endpoints let a stranger check the books without taking anyone's word for it.</p>
-        <h3>A ledger you own</h3>
-        <p><code>GET /v1/ledgers/{id}/verify</code>, with your key, recomputes that ledger's whole hash chain from the first entry and confirms every asset it holds still sums to zero.</p>
-        <div class="block"><pre><code>curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/verify -H "Authorization: Bearer $KEY"</code></pre></div>
-        <h3>The exchange, with no key at all</h3>
-        <p><code>GET /v1/exchange/verify</code> takes no key and runs the same proof against the exchange's own ledger, so anyone can confirm the exchange has never created or destroyed money, without ever holding a key of their own. Limited to 2 requests per minute per address.</p>
-        <div class="block"><pre><code>curl -s https://plutus-ten-eta.vercel.app/v1/exchange/verify</code></pre></div>
-      </section>
-
-      <section id="source-and-licence">
-        <h2>Source and licence</h2>
-        <p>The full source, the migrations, the test suite and the design documents are on GitHub.</p>
-        <p><a href="https://github.com/atilladev-owner/Plutus">github.com/atilladev-owner/Plutus</a></p>
-        <p class="licence">Source available under the <a href="https://github.com/atilladev-owner/Plutus/blob/main/LICENSE.md">PolyForm Noncommercial License 1.0.0</a>. Read it, run it, learn from it. Commercial use needs the author's written permission.</p>
-      </section>
-    </main>
+    <button type="button" class="theme-toggle" data-theme-toggle aria-label="Theme, currently System. Activate to change it.">
+      <svg data-theme-icon="system" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect width="20" height="14" x="2" y="3" rx="2"></rect>
+        <line x1="8" x2="16" y1="21" y2="21"></line>
+        <line x1="12" x2="12" y1="17" y2="21"></line>
+      </svg>
+      <svg data-theme-icon="light" hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4"></circle>
+        <path d="M12 2v2"></path>
+        <path d="M12 20v2"></path>
+        <path d="m4.93 4.93 1.41 1.41"></path>
+        <path d="m17.66 17.66 1.41 1.41"></path>
+        <path d="M2 12h2"></path>
+        <path d="M20 12h2"></path>
+        <path d="m6.34 17.66-1.41 1.41"></path>
+        <path d="m19.07 4.93-1.41 1.41"></path>
+      </svg>
+      <svg data-theme-icon="dark" hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+      </svg>
+      <span data-role="theme-label">System</span>
+    </button>
   </div>
-  <script>
-    // Side panel links scroll to their section and replace the address instead of pushing a
-    // history entry, so the browser back button leaves the page rather than walking the panel.
-    document.querySelectorAll("aside.side a[href^=\"#\"]").forEach(function (a) {
-      a.setAttribute("data-guide-nav", "");
-      a.addEventListener("click", function (event) {
-        var id = a.getAttribute("href").slice(1);
-        var target = document.getElementById(id);
-        if (!target) return;
-        event.preventDefault();
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
-        history.replaceState(null, "", "#" + id);
-      });
-    });
-  </script>
+</header>
+
+<main id="main" class="page-main">
+
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <h1>Prove the books.<br>Watch the trades.</h1>
+        <p class="lede">Plutus is a ledger and a paper trading exchange in one HTTP API. The book on the right is real, and it is reading itself again every five seconds.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="/how-it-works">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 12h14"></path>
+              <path d="m12 5 7 7-7 7"></path>
+            </svg>
+            See how it works
+          </a>
+          <a class="btn btn-ghost" href="https://github.com/atilladev-owner/Plutus">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 1.5 5 1.5 5 1.5c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 8.5c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"></path>
+              <path d="M9 18c-4.51 2-5-2-7-2"></path>
+            </svg>
+            View source
+          </a>
+        </div>
+      </div>
+
+      <div class="desk" data-live-desk data-market="BTC-USDT" data-base-decimals="8" data-quote-decimals="6" role="region" aria-label="Live BTC-USDT proof desk">
+        <div class="desk-head">
+          <span class="desk-market mono">BTC-USDT</span>
+          <span class="desk-status">
+            <span class="status-dot" data-role="status-dot" data-state="loading" aria-hidden="true"></span>
+            <span data-role="status-text">Waiting for JavaScript</span>
+          </span>
+        </div>
+        <div class="desk-book">
+          <div class="book-side" data-side="bid">
+            <p class="book-side-label">Bids</p>
+            <div class="book-rows" data-role="bid-rows">
+              <p class="desk-empty">The live book needs JavaScript enabled.</p>
+            </div>
+          </div>
+          <div class="book-side" data-side="ask">
+            <p class="book-side-label">Asks</p>
+            <div class="book-rows" data-role="ask-rows">
+              <p class="desk-empty">The live book needs JavaScript enabled.</p>
+            </div>
+          </div>
+        </div>
+        <div class="desk-ticker">
+          <span class="ticker-label">Last traded</span>
+          <span class="ticker-last mono" data-role="ticker-last">Needs JavaScript</span>
+        </div>
+        <div class="desk-verify">
+          <span class="label">Proof</span>
+          <span data-role="verify-text">Needs JavaScript</span>
+        </div>
+        <p class="desk-updated" data-role="desk-updated"></p>
+      </div>
+    </div>
+  </section>
+
+  <section id="how-it-works" aria-labelledby="explain-heading">
+    <div class="wrap explain-grid">
+      <div class="explain-copy">
+        <div class="section-head">
+          <h2 id="explain-heading">Every fill is a transfer</h2>
+        </div>
+        <p>Plutus is a multi asset ledger, and a paper trading exchange built directly on top of it. A transfer moves money between accounts as one or more legs, committed together under a database lock, never as application code hoping two writes do not race.</p>
+        <h3>Every write is provable</h3>
+        <p>Each write also appends one entry to a hash chained journal. The verify endpoint recomputes the whole chain on demand, so a stranger can confirm the books are honest without taking anyone's word for it.</p>
+        <h3>A fill is a transfer</h3>
+        <p>An exchange fill is a ledger transfer with three legs: the quote asset to the seller, a fee to the house, and the base asset to the buyer. The exchange cannot create or destroy money, and its own verify endpoint proves that on demand.</p>
+      </div>
+      <figure class="diagram">
+        <svg viewBox="0 0 880 340" role="img" aria-labelledby="diagram-transfer-title" xmlns="http://www.w3.org/2000/svg">
+          <title id="diagram-transfer-title">A transfer between two accounts, appending one journal entry</title>
+          <defs>
+            <marker id="d1-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" style="fill: var(--accent);"></path>
+            </marker>
+          </defs>
+          <rect x="60" y="60" width="230" height="96" rx="10" style="fill: var(--panel); stroke: var(--line); stroke-width: 1;"></rect>
+          <text x="175" y="100" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 16px; fill: var(--ink);">world:GHS</text>
+          <text x="175" y="124" text-anchor="middle" style="font-family: var(--font-body); font-size: 13px; fill: var(--muted);">source leg</text>
+
+          <rect x="590" y="60" width="230" height="96" rx="10" style="fill: var(--panel); stroke: var(--line); stroke-width: 1;"></rect>
+          <text x="705" y="100" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 16px; fill: var(--ink);">till, GHS</text>
+          <text x="705" y="124" text-anchor="middle" style="font-family: var(--font-body); font-size: 13px; fill: var(--muted);">destination leg</text>
+
+          <line x1="290" y1="108" x2="580" y2="108" style="stroke: var(--accent); stroke-width: 2;" marker-end="url(#d1-arrow)"></line>
+          <text x="435" y="90" text-anchor="middle" style="font-family: var(--font-mono); font-size: 13px; fill: var(--accent);">125,000 minor units</text>
+
+          <line x1="435" y1="156" x2="435" y2="202" style="stroke: var(--line); stroke-width: 1.5;"></line>
+
+          <rect x="255" y="202" width="360" height="92" rx="10" style="fill: var(--ground); stroke: var(--accent); stroke-width: 1.5;"></rect>
+          <text x="435" y="234" text-anchor="middle" style="font-family: var(--font-display); font-weight: 600; font-size: 14px; fill: var(--ink);">journal entry number 482</text>
+          <text x="435" y="256" text-anchor="middle" style="font-family: var(--font-mono); font-size: 12px; fill: var(--muted);">hash of entry 481 plus this payload</text>
+
+          <rect x="60" y="216" width="150" height="60" rx="8" style="fill: var(--data-1);"></rect>
+          <text x="135" y="250" text-anchor="middle" style="font-family: var(--font-mono); font-size: 12px; fill: var(--ink);">entry 481</text>
+          <line x1="210" y1="246" x2="255" y2="246" style="stroke: var(--data-2); stroke-width: 1.5; stroke-dasharray: 3 3;"></line>
+
+          <rect x="670" y="216" width="150" height="60" rx="8" style="fill: var(--data-1); opacity: 0.6;"></rect>
+          <text x="745" y="250" text-anchor="middle" style="font-family: var(--font-mono); font-size: 12px; fill: var(--muted);">entry 483</text>
+          <line x1="615" y1="246" x2="670" y2="246" style="stroke: var(--data-2); stroke-width: 1.5; stroke-dasharray: 3 3;"></line>
+        </svg>
+        <figcaption class="diagram-caption">A transfer moves money between two accounts as legs, and the journal entry it appends carries the hash of the entry before it.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="use-cases" aria-labelledby="usecases-heading">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="usecases-heading">What to build with it</h2>
+        <p>Accounts, transfers and holds are general enough to carry patterns well outside trading.</p>
+      </div>
+      <div class="usecases-grid">
+        <article class="usecase usecase--tint">
+          <div class="usecase-head">
+            <span class="usecase-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+            </span>
+            <h3>Savings groups</h3>
+          </div>
+          <p>One ledger per group, one account per member. A contribution is a transfer into the shared pot. A payout on schedule is a transfer back out, and the journal is the record, not a spreadsheet.</p>
+        </article>
+
+        <article class="usecase">
+          <div class="usecase-head">
+            <span class="usecase-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"></path>
+                <path d="M8 7h8"></path>
+                <path d="M8 11h8"></path>
+                <path d="M8 15h5"></path>
+              </svg>
+            </span>
+            <h3>Group expenses</h3>
+          </div>
+          <p>An account per person, an expense recorded as a transfer between whoever paid and whoever owes. Who owes what is a balance read, not a reconciliation at the end of the trip.</p>
+        </article>
+
+        <article class="usecase">
+          <div class="usecase-head">
+            <span class="usecase-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M17 8h1a4 4 0 1 1 0 8h-1"></path>
+                <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"></path>
+                <line x1="6" x2="6" y1="2" y2="4"></line>
+                <line x1="10" x2="10" y1="2" y2="4"></line>
+                <line x1="14" x2="14" y1="2" y2="4"></line>
+              </svg>
+            </span>
+            <h3>Tabs</h3>
+          </div>
+          <p>A hold reserves a ceiling when the tab opens, is captured for the exact amount owed at close, and releases the rest. Nobody's money moves until the tab is actually settled.</p>
+          <svg class="usecase-diagram" viewBox="0 0 220 46" role="presentation" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+            <rect x="0" y="16" width="220" height="14" rx="4" style="fill: var(--data-1);"></rect>
+            <rect x="0" y="16" width="140" height="14" rx="4" style="fill: var(--accent-wash);"></rect>
+            <rect x="0" y="16" width="70" height="14" rx="4" style="fill: var(--accent);"></rect>
+            <text x="0" y="10" style="font-family: var(--font-mono); font-size: 9px; fill: var(--muted);">opened</text>
+            <text x="72" y="10" style="font-family: var(--font-mono); font-size: 9px; fill: var(--muted);">captured</text>
+            <text x="142" y="10" style="font-family: var(--font-mono); font-size: 9px; fill: var(--muted);">released</text>
+          </svg>
+        </article>
+
+        <article class="usecase usecase--tint">
+          <div class="usecase-head">
+            <span class="usecase-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+            </span>
+            <h3>Deposits</h3>
+          </div>
+          <p>A hold placed at booking, captured in full or in part if something was owed, released untouched if it never was. The hold's own state answers whether a deposit is still outstanding.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="setup-strip" id="set-up" aria-labelledby="setup-heading">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="setup-heading">Three calls to start</h2>
+        <p>No signup. A sandbox key comes back from one call, ready to use immediately.</p>
+      </div>
+      <div class="setup-grid">
+        <div class="setup-step">
+          <p class="setup-num mono">01</p>
+          <h3>Mint a key</h3>
+          <div class="codeblock">
+            <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/keys</code></pre>
+            <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/keys">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+                <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+              </svg>
+              <span data-role="copy-label">Copy</span>
+            </button>
+          </div>
+        </div>
+        <div class="setup-step">
+          <p class="setup-num mono">02</p>
+          <h3>Open a ledger</h3>
+          <div class="codeblock">
+            <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers \
+  -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"shop"}'</code></pre>
+            <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -d '{&quot;name&quot;:&quot;shop&quot;}'">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+                <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+              </svg>
+              <span data-role="copy-label">Copy</span>
+            </button>
+          </div>
+        </div>
+        <div class="setup-step">
+          <p class="setup-num mono">03</p>
+          <h3>Move money</h3>
+          <div class="codeblock">
+            <pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers \
+  -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: fund-1" \
+  -d '{"legs":[{"from":"world:GHS","to":"'$TILL'","asset":"GHS","amount":"125000"}]}'</code></pre>
+              <button type="button" class="copy-btn" data-copy="curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers -H &quot;Authorization: Bearer $KEY&quot; -H &quot;Content-Type: application/json&quot; -H &quot;Idempotency-Key: fund-1&quot; -d '{&quot;legs&quot;:[{&quot;from&quot;:&quot;world:GHS&quot;,&quot;to&quot;:&quot;'$TILL'&quot;,&quot;asset&quot;:&quot;GHS&quot;,&quot;amount&quot;:&quot;125000&quot;}]}'">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+                <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+              </svg>
+              <span data-role="copy-label">Copy</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <a class="btn btn-primary" href="/set-up">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 12h14"></path>
+          <path d="m12 5 7 7-7 7"></path>
+        </svg>
+        Read the full set up guide
+      </a>
+    </div>
+  </section>
+
+</main>
+
+<footer class="sitefooter">
+  <div class="footer-inner">
+    <p class="footer-note">Source available under the <a href="https://github.com/atilladev-owner/Plutus/blob/main/LICENSE.md">PolyForm Noncommercial License 1.0.0</a>. Read it, run it, learn from it. Commercial use needs the author's written permission.</p>
+    <nav class="footer-links" aria-label="Project and proof">
+      <a href="https://github.com/atilladev-owner/Plutus">Source on GitHub</a>
+      <a href="https://github.com/atilladev-owner/Plutus/blob/main/LICENSE.md">Licence</a>
+      <a href="/v1/exchange/verify">Verify the exchange</a>
+      <a href="/limits">Verify a ledger</a>
+    </nav>
+  </div>
+</footer>
+
 </body>
 </html>
