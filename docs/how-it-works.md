@@ -1,5 +1,7 @@
 # How Plutus works
 
+For the illustrated version, with diagrams for the transfer, a hold's life, a match and the hash chain, see [the guide page](https://plutus-ten-eta.vercel.app/how-it-works).
+
 A plain words tour of Plutus: what each part does, why it is built that way, how to change
 it safely, and what building it taught. Every term gets one plain line the first time it
 shows up, so nothing here should need a second document to understand.

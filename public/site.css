@@ -101,7 +101,18 @@
 /* Reset. */
 *, *::before, *::after { box-sizing: border-box; }
 html { background: var(--ground); scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
-body {
+/*
+  The generic rules below (body's own text colour, headings, paragraphs, links, inline
+  code) are written for the six plain pages, where body carries neither class. The docs
+  shell renders Scalar's own reference into the same document instead of an iframe, and
+  Scalar marks that same body .light-mode or .dark-mode for its own theming, so an unguarded
+  bare selector here would reach into Scalar's content too and race its own rules for
+  ownership of an h1's colour, sometimes losing the race to source order rather than to
+  Scalar's own more specific styling. Guarded out on that one page rather than narrowed by
+  specificity, so the two never compete at all: docs.ts's own customCss repaints body from
+  Scalar's variables instead, and every other bare rule here just does not match there.
+*/
+:where(body:not(.light-mode):not(.dark-mode)) {
   margin: 0;
   background: var(--ground);
   color: var(--ink);
@@ -112,28 +123,32 @@ body {
   text-rendering: optimizeLegibility;
   overflow-x: hidden;
 }
+body { margin: 0; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-x: hidden; }
 img, svg { max-width: 100%; display: block; }
 main { display: block; }
 
 /* Headings. */
-h1, h2, h3, h4 {
+:where(body:not(.light-mode):not(.dark-mode)) h1,
+:where(body:not(.light-mode):not(.dark-mode)) h2,
+:where(body:not(.light-mode):not(.dark-mode)) h3,
+:where(body:not(.light-mode):not(.dark-mode)) h4 {
   font-family: var(--font-display);
   font-weight: 700;
   color: var(--ink);
   margin: 0;
   text-wrap: balance;
 }
-h1 { font-size: var(--text-display); line-height: 1.05; letter-spacing: -0.02em; }
-h2 { font-size: var(--text-36); line-height: 1.15; letter-spacing: -0.02em; }
-h3 { font-size: var(--text-22); line-height: 1.25; font-weight: 600; }
-h4 { font-size: var(--text-18); line-height: 1.3; font-weight: 600; }
+:where(body:not(.light-mode):not(.dark-mode)) h1 { font-size: var(--text-display); line-height: 1.05; letter-spacing: -0.02em; }
+:where(body:not(.light-mode):not(.dark-mode)) h2 { font-size: var(--text-36); line-height: 1.15; letter-spacing: -0.02em; }
+:where(body:not(.light-mode):not(.dark-mode)) h3 { font-size: var(--text-22); line-height: 1.25; font-weight: 600; }
+:where(body:not(.light-mode):not(.dark-mode)) h4 { font-size: var(--text-18); line-height: 1.3; font-weight: 600; }
 
-p { margin: 0 0 var(--sp-16); max-width: 65ch; }
-p:last-child { margin-bottom: 0; }
+:where(body:not(.light-mode):not(.dark-mode)) p { margin: 0 0 var(--sp-16); max-width: 65ch; }
+:where(body:not(.light-mode):not(.dark-mode)) p:last-child { margin-bottom: 0; }
 .lede { font-size: var(--text-18); line-height: 1.55; color: var(--ink); }
 
 /* Links. */
-a {
+:where(body:not(.light-mode):not(.dark-mode)) a {
   color: var(--accent);
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
@@ -141,8 +156,8 @@ a {
   text-underline-offset: 3px;
   transition: color var(--motion-duration) var(--motion-ease), text-decoration-color var(--motion-duration) var(--motion-ease);
 }
-a:hover { color: var(--accent-deep); text-decoration-color: var(--accent-deep); }
-a:focus-visible {
+:where(body:not(.light-mode):not(.dark-mode)) a:hover { color: var(--accent-deep); text-decoration-color: var(--accent-deep); }
+:where(body:not(.light-mode):not(.dark-mode)) a:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
   border-radius: 4px;
@@ -162,12 +177,16 @@ button:focus-visible, [tabindex]:focus-visible {
   color: var(--muted);
 }
 
-/* Numbers and code share the monospace face with tabular figures. */
-code, pre, .mono {
+/* Numbers and code share the monospace face with tabular figures. Bare code and pre are
+   guarded the same way as the headings above: reserved for the six plain pages, since
+   Scalar's own reference already sets its own code and pre font from --scalar-font-code. */
+:where(body:not(.light-mode):not(.dark-mode)) code,
+:where(body:not(.light-mode):not(.dark-mode)) pre,
+.mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
-code {
+:where(body:not(.light-mode):not(.dark-mode)) code {
   background: var(--panel);
   border: 1px solid var(--line);
   padding: 1px 6px;
@@ -424,10 +443,14 @@ code {
   overflow-x: auto;
   margin: 0 0 var(--sp-16);
 }
-table { width: 100%; border-collapse: collapse; font-size: var(--text-14); min-width: 460px; }
-th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
-tbody tr:last-child td { border-bottom: none; }
-th {
+/* Bare table, th and td are guarded the same way as the headings above: Scalar draws its
+   own tables (a markdown table inside a description, for one) styled from its own
+   variables, reserved here for the six plain pages so the two never compete. */
+:where(body:not(.light-mode):not(.dark-mode)) table { width: 100%; border-collapse: collapse; font-size: var(--text-14); min-width: 460px; }
+:where(body:not(.light-mode):not(.dark-mode)) th,
+:where(body:not(.light-mode):not(.dark-mode)) td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+:where(body:not(.light-mode):not(.dark-mode)) tbody tr:last-child td { border-bottom: none; }
+:where(body:not(.light-mode):not(.dark-mode)) th {
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 12px;

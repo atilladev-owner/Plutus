@@ -91,3 +91,24 @@ describe("platform", () => {
     expect(res.body.raw).toBe(raw);
   });
 });
+
+describe("docs", () => {
+  it("serves the restyled API reference with the site's top bar, tokens and history patch", async () => {
+    const { app } = await makeTestApp();
+    const res = await request(app).get("/docs");
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("text/html");
+    // The same top bar every site page carries, with Docs marked current.
+    expect(res.text).toContain('class="topbar"');
+    expect(res.text).toContain('<a class="wordmark" href="/">plutus</a>');
+    expect(res.text).toContain('<a href="/docs" aria-current="page">Docs</a>');
+    expect(res.text).toContain("data-theme-toggle");
+    // Scalar's own variables mapped onto the site tokens, both themes.
+    expect(res.text).toContain("--scalar-color-1: #1F2A24");
+    expect(res.text).toContain("--scalar-color-1: #EEF2EE");
+    expect(res.text).toContain("--scalar-sidebar-background-1");
+    expect(res.text).toContain("--scalar-custom-header-height");
+    // The pushState to replaceState patch that keeps the sidebar off the back button stack.
+    expect(res.text).toContain("history.pushState=function(state,title,url)");
+  });
+});
