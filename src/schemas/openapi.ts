@@ -26,7 +26,7 @@ export function buildOpenApi(routes: RouteDef[], baseUrl: string, extraPaths: Re
       [String(r.status ?? 200)]: r.status === 204 ? { description: "No content" } : { description: "Success", content: { "application/json": { schema: schemaOf(r.response) } } },
       "422": problem, "429": problem,
     };
-    if (r.auth === "bearer") { responses["401"] = problem; responses["403"] = problem; }
+    if (r.auth === "bearer" || r.auth === "signed") { responses["401"] = problem; responses["403"] = problem; }
     if (pathParams(r.path).length > 0) responses["404"] = problem;
     if (r.idempotent) responses["409"] = problem;
     const op: Json = {
@@ -34,6 +34,7 @@ export function buildOpenApi(routes: RouteDef[], baseUrl: string, extraPaths: Re
       parameters: params, responses,
       ...(r.body ? { requestBody: { required: true, content: { "application/json": { schema: inputSchemaOf(r.body) } } } } : {}),
       ...(r.auth === "bearer" ? { security: [{ bearer: [] }] } : {}),
+      ...(r.auth === "signed" ? { security: [{ signed: [] }] } : {}),
     };
     if (r.idempotent) (op.parameters as Json[]).push({ name: "Idempotency-Key", in: "header", required: false, schema: { type: "string", maxLength: 255 } });
     paths[r.path] ??= {};
@@ -49,11 +50,17 @@ export function buildOpenApi(routes: RouteDef[], baseUrl: string, extraPaths: Re
     openapi: "3.1.0",
     info: { title: "Plutus", version: "1.0.0", description: "A multi asset ledger and paper trading exchange API. Amounts are strings of minor units. Every list is cursor paginated. Every error is a problem details document with a stable code." },
     servers: [{ url: baseUrl }],
-    tags: ["Meta", "Assets", "Keys", "Ledgers", "Accounts", "Transfers", "Holds", "Journal", "Events", "Webhooks"].map((name) => ({ name })),
+    tags: ["Meta", "Assets", "Keys", "Ledgers", "Accounts", "Transfers", "Holds", "Journal", "Events", "Webhooks", "Exchange"].map((name) => ({ name })),
     paths,
     components: {
       schemas: { Problem: schemaOf(Problem) },
-      securitySchemes: { bearer: { type: "http", scheme: "bearer", description: "Authorization: Bearer pl_test_... or pl_live_..." } },
+      securitySchemes: {
+        bearer: { type: "http", scheme: "bearer", description: "Authorization: Bearer pl_test_... or pl_live_..." },
+        signed: {
+          type: "apiKey", in: "header", name: "X-Plutus-Signature",
+          description: "Exchange trading endpoints sign every request instead of sending a bearer token (spec 10.8). Four headers travel together: X-Plutus-Key-Id (the key_ id), X-Plutus-Timestamp (Unix milliseconds), X-Plutus-Recv-Window (optional, milliseconds, default 5000, maximum 60000), and X-Plutus-Signature, the hex HMAC SHA256, keyed by the SHA-256 digest of the key secret, over timestamp + \"\\n\" + METHOD + \"\\n\" + path with its query string + \"\\n\" + the raw request body.",
+        },
+      },
     },
   };
 }

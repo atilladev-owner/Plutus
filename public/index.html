@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Plutus</title>
-<meta name="description" content="A ledger you can audit and an exchange you can trade against.">
+<meta name="description" content="A reference guide to the Plutus ledger and exchange API: how it works, what to build with it, and how to verify it yourself.">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -35,34 +35,144 @@
     font-family: "Nunito", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
-  .wrap {
-    max-width: 640px;
-    margin: 0 auto;
-    padding: clamp(32px, 8vw, 72px) 24px 56px;
-  }
-  h1 {
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:hover { color: var(--ink); }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+  h1, h2, h3 {
     font-family: "Outfit", system-ui, sans-serif;
     font-weight: 700;
-    font-size: clamp(30px, 6vw, 36px);
     letter-spacing: -0.01em;
-    margin: 0 0 28px;
+    color: var(--ink);
   }
+
+  header.top { border-bottom: 1px solid var(--border); }
+  .top-inner {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 22px 24px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 14px 28px;
+  }
+  .brand-block h1 {
+    font-size: 20px;
+    margin: 0;
+  }
+  .brand-block p {
+    margin: 4px 0 0;
+    font-size: 14px;
+    color: var(--muted);
+    max-width: 46ch;
+  }
+  nav.top-links {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 20px;
+    row-gap: 6px;
+    font-family: "Outfit", system-ui, sans-serif;
+    font-size: 14px;
+  }
+
+  .layout {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 40px 24px 96px;
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 16px 56px;
+    align-items: start;
+  }
+  aside.side {
+    position: sticky;
+    top: 28px;
+  }
+  aside.side .side-label {
+    font-family: "Outfit", system-ui, sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 12px;
+  }
+  aside.side ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  aside.side a {
+    display: block;
+    padding: 7px 10px;
+    margin-left: -10px;
+    border-radius: 10px;
+    font-family: "Outfit", system-ui, sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+  }
+  aside.side a:hover { color: var(--accent); background: var(--panel); }
+  aside.side a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  main.content { max-width: 65ch; min-width: 0; }
+  main.content section {
+    padding-bottom: 52px;
+    margin-bottom: 52px;
+    border-bottom: 1px solid var(--border);
+  }
+  main.content section:last-of-type {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+  }
+  h2 { font-size: 25px; margin: 0 0 18px; }
+  h3 { font-size: 16px; margin: 30px 0 10px; }
+  h3:first-child { margin-top: 0; }
+  p { font-size: 16px; line-height: 1.75; margin: 0 0 16px; }
+  p:last-child { margin-bottom: 0; }
+  ul.plain, ol.plain { margin: 0 0 16px; padding-left: 22px; }
+  ul.plain li, ol.plain li { font-size: 16px; line-height: 1.7; margin-bottom: 8px; }
+
   p.lede {
     font-family: "Outfit", system-ui, sans-serif;
     font-weight: 500;
-    font-size: clamp(18px, 2.4vw, 21px);
+    font-size: clamp(18px, 2.2vw, 21px);
     line-height: 1.5;
-    max-width: 36ch;
-    margin: 0 0 32px;
+    margin: 0 0 20px;
   }
-  .copy { margin: 0 0 40px; }
-  .copy p {
-    font-size: 16px;
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: var(--panel);
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-size: 0.9em;
+  }
+  .block {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 22px;
+    overflow-x: auto;
+    margin: 0 0 24px;
+  }
+  .block pre {
+    margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13.5px;
     line-height: 1.75;
-    max-width: 60ch;
-    margin: 0 0 16px;
+    white-space: pre;
   }
-  .copy p:last-child { margin-bottom: 0; }
+  .block code { background: none; padding: 0; border-radius: 0; font-size: inherit; }
+  .block .rem { color: var(--muted); }
+
   .label {
     font-family: "Outfit", system-ui, sans-serif;
     font-size: 12px;
@@ -72,56 +182,127 @@
     color: var(--muted);
     margin: 0 0 12px;
   }
-  .quickstart {
-    background: var(--panel);
+
+  .table-wrap {
     border: 1px solid var(--border);
     border-radius: 14px;
-    padding: 20px 22px;
+    overflow: hidden;
     overflow-x: auto;
-    margin: 0 0 40px;
+    margin: 0 0 24px;
   }
-  .quickstart pre {
-    margin: 0;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 13.5px;
-    line-height: 1.75;
-    white-space: pre;
-    color: var(--ink);
-  }
-  .quickstart .rem { color: var(--muted); }
-  nav.links {
-    display: flex;
-    flex-wrap: wrap;
-    column-gap: 20px;
-    row-gap: 8px;
+  table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 420px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  th {
     font-family: "Outfit", system-ui, sans-serif;
-    font-size: 15px;
-    margin: 0 0 28px;
-  }
-  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
-  a:hover { color: var(--ink); }
-  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
-  p.licence {
-    font-size: 13px;
-    line-height: 1.6;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     color: var(--muted);
-    margin: 0;
+    background: var(--panel);
   }
+  td code { font-size: 0.85em; }
+
+  p.licence { font-size: 13px; line-height: 1.6; color: var(--muted); }
   p.licence a { color: var(--muted); }
   p.licence a:hover { color: var(--ink); }
+
+  @media (max-width: 900px) {
+    .layout {
+      grid-template-columns: 1fr;
+      padding-top: 28px;
+    }
+    aside.side {
+      position: static;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 20px;
+    }
+    aside.side ol {
+      flex-direction: row;
+      flex-wrap: wrap;
+      column-gap: 6px;
+      row-gap: 4px;
+    }
+    aside.side a { margin-left: 0; padding: 6px 8px; }
+  }
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>plutus</h1>
-    <p class="lede">A ledger you can audit and an exchange you can trade against.</p>
-    <div class="copy">
-      <p>Plutus is a ledger, and from milestone two a paper trading exchange, built as a single API. Mint a key with no signup, open a ledger, and move money between accounts under invariants the database enforces itself.</p>
-      <p>Every amount is an integer count of the asset's smallest unit, never a float. Each write, a transfer, a hold, a capture, runs as one Postgres function under row locks, so two requests racing for the same balance cannot both win.</p>
-      <p>Every write also appends to a hash chained journal. Each entry commits the hash of the one before it, so one request can prove the whole history is intact, not only the balances it left behind.</p>
+  <header class="top">
+    <div class="top-inner">
+      <div class="brand-block">
+        <h1>plutus</h1>
+        <p>A ledger you can audit and an exchange you can trade against.</p>
+      </div>
+      <nav class="top-links" aria-label="Project links">
+        <a href="/docs">Docs</a>
+        <a href="/openapi.json">OpenAPI</a>
+        <a href="/health">Health</a>
+        <a href="https://github.com/atilladev-owner/Plutus">Source on GitHub</a>
+      </nav>
     </div>
-    <p class="label">Thirty seconds</p>
-    <div class="quickstart"><pre><code><span class="rem"># 1. a key, no signup</span>
+  </header>
+
+  <div class="layout">
+    <aside class="side">
+      <p class="side-label">Sections</p>
+      <ol class="plain">
+        <li><a href="#what-it-is">What it is</a></li>
+        <li><a href="#how-it-works">How it works</a></li>
+        <li><a href="#what-to-build">What to build with it</a></li>
+        <li><a href="#set-it-up">Set it up</a></li>
+        <li><a href="#limits">Limits</a></li>
+        <li><a href="#verify-it">Verify it</a></li>
+        <li><a href="#source-and-licence">Source and licence</a></li>
+      </ol>
+    </aside>
+
+    <main class="content">
+      <section id="what-it-is">
+        <h2>What it is</h2>
+        <p class="lede">A ledger you can audit and an exchange you can trade against.</p>
+        <p>Plutus is a multi asset ledger, and from milestone two a paper trading exchange, built as a single HTTP API. Mint a key with no signup, open a ledger, and move money between accounts under invariants the database enforces itself rather than application code that might forget to check them.</p>
+        <p>Every amount is an integer count of the asset's smallest unit, never a float. Every write, a transfer, a hold, a capture, an order fill, runs as one Postgres function under row locks, so two requests racing for the same balance or the same market cannot both win. Every write also appends to a hash chained journal, so one request can prove the whole history is intact, not only the balances it left behind.</p>
+        <p>The exchange is built entirely on top of the ledger, not beside it. A fill is a ledger transfer with three legs. The exchange cannot create or destroy money, and its own verify endpoint proves that on demand.</p>
+      </section>
+
+      <section id="how-it-works">
+        <h2>How it works</h2>
+        <h3>The ledger</h3>
+        <p>A ledger holds one or more accounts, each denominated in one asset. A transfer moves money between accounts as a list of legs, all committed together or not at all. Balances only ever change through a transfer, so there is never a code path that edits a balance directly and skips the record of why.</p>
+        <h3>Holds</h3>
+        <p>A hold reserves funds against an account without moving them yet. It is captured, for the amount actually owed, or released back to the account it came from. An exchange order uses a hold the same way: placing a limit buy holds the money it might spend, and a fill draws from that hold rather than the account directly.</p>
+        <h3>Journal and chain</h3>
+        <p>Every write appends one entry to that ledger's journal, and every entry carries the hash of the entry before it. Tamper with one entry, even a value nobody reads day to day, and every entry after it fails to recompute. The verify endpoint walks the whole chain and reports the first place it breaks, not just whether today's balances look right.</p>
+        <h3>Matching</h3>
+        <p>An order for a market takes that market's own lock before anything else happens to it, so two orders on the same market are always resolved one at a time, never as a race. The book is walked in price time priority: the best resting price fills first, then the next, until the incoming order is filled or nothing better is left to trade against. Every fill posts one ledger transfer, three legs: the quote asset to the seller, a fee to the house, and the base asset to the buyer.</p>
+        <h3>The house</h3>
+        <p>The house is an ordinary key with ordinary balances, not a hidden privileged account. It quotes a ladder of five bids and five asks around the current reference price only when a request actually looks at the market, and lets that ladder go stale otherwise. There is no background loop pretending to be a market that never sleeps.</p>
+      </section>
+
+      <section id="what-to-build">
+        <h2>What to build with it</h2>
+        <p>The ledger's primitives, accounts, transfers and holds, are general enough to carry patterns well outside trading. Four worth naming:</p>
+        <h3>Savings groups</h3>
+        <p>A rotating group savings circle: one ledger per group, one account per member. Contributions are transfers from a member's account into a shared pot; a payout on schedule is a transfer back out. The group's own history is the journal, not a spreadsheet someone has to keep honest.</p>
+        <h3>Group expenses</h3>
+        <p>Shared costs between people who trust each other but still want a record: an account per person, an expense recorded as a transfer between whoever paid and whoever owes their share. Who owes what is a balance read, not a reconciliation someone runs at the end of the trip.</p>
+        <h3>Tabs</h3>
+        <p>A running tab at a bar or a café: open it with a hold against the customer's account for a sensible ceiling, capture the exact amount owed when they settle up, release the rest. Nobody's money moves until the tab actually closes.</p>
+        <h3>Deposits</h3>
+        <p>A booking or a rental deposit: a hold placed at the time of booking, captured in full or in part if something was owed against it, released back untouched if it never was. The hold's own state is the answer to whether a deposit is still outstanding.</p>
+      </section>
+
+      <section id="set-it-up">
+        <h2>Set it up</h2>
+        <h3>Mint a key</h3>
+        <p>No signup. A sandbox key comes back from one call, ready to use immediately.</p>
+        <div class="block"><pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/keys</code></pre></div>
+
+        <h3>The first three calls</h3>
+        <p class="label">Thirty seconds</p>
+        <div class="block"><pre><code><span class="rem"># 1. a key, no signup</span>
 curl -s -X POST https://plutus-ten-eta.vercel.app/v1/keys
 <span class="rem"># 2. a ledger and two accounts</span>
 curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"name":"shop"}'
@@ -130,13 +311,83 @@ curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/accounts -H
 curl -s -X POST https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/transfers -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -H "Idempotency-Key: fund-1" -d '{"legs":[{"from":"world:GHS","to":"'$TILL'","asset":"GHS","amount":"125000"}]}'
 <span class="rem"># 4. prove the books</span>
 curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/verify -H "Authorization: Bearer $KEY"</code></pre></div>
-    <nav class="links">
-      <a href="/docs">Docs</a>
-      <a href="/openapi.json">OpenAPI</a>
-      <a href="/health">Health</a>
-      <a href="https://github.com/atilladev-owner/Plutus">Source on GitHub</a>
-    </nav>
-    <p class="licence">Source available under the <a href="https://github.com/atilladev-owner/Plutus/blob/main/LICENSE.md">PolyForm Noncommercial License 1.0.0</a>. Read it, run it, learn from it. Commercial use needs the author's written permission.</p>
+
+        <h3>Signing for trading</h3>
+        <p>Exchange trading endpoints sign every request instead of sending a bearer token. Four headers travel together: <code>X-Plutus-Key-Id</code>, <code>X-Plutus-Timestamp</code> in Unix milliseconds, <code>X-Plutus-Recv-Window</code> in milliseconds, and <code>X-Plutus-Signature</code>, a hex HMAC SHA256 over <code>timestamp + "\n" + METHOD + "\n" + path + "\n" + body</code>, keyed by the SHA-256 digest of the key secret rather than the secret itself, since that digest is all the server ever stores. The worked example below uses a key id and secret invented for this page, so every value in it can be recomputed and checked.</p>
+        <div class="block"><pre><code>BODY='{"market":"BTC-USDT","side":"buy","type":"limit","price":"6000000000","quantity":"100000"}'
+curl -s -X POST https://plutus-ten-eta.vercel.app/v1/exchange/orders \
+  -H "Content-Type: application/json" \
+  -H "X-Plutus-Key-Id: key_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a" \
+  -H "X-Plutus-Timestamp: 1767225600000" \
+  -H "X-Plutus-Recv-Window: 5000" \
+  -H "X-Plutus-Signature: 16b66c8f8680c4b9c8208e70f9abafa7821eeb9eafa3dba686fe0b4f9a0dbbbc" \
+  -d "$BODY"</code></pre></div>
+        <p><code>docs/place-order.mjs</code> in the repository reimplements this with nothing but <code>node:crypto</code>, reads a key id and secret from the environment, and places one real order against the live host from any machine, including one that has never cloned this repository.</p>
+
+        <h3>The faucet</h3>
+        <p>A sandbox key funds itself from the world with 100,000 USDT, 1 BTC and 10 ETH, once per 24 hours. It is a signed call like any other trading endpoint.</p>
+        <div class="block"><pre><code>curl -s -X POST https://plutus-ten-eta.vercel.app/v1/exchange/faucet \
+  -H "Content-Type: application/json" \
+  -H "X-Plutus-Key-Id: key_4f9a2c7e1b3d4a5f8e6c9b0a1d2e3f4a" \
+  -H "X-Plutus-Timestamp: 1767225601000" \
+  -H "X-Plutus-Recv-Window: 5000" \
+  -H "X-Plutus-Signature: 6f36cc5bacc4e1cf5b688405cb7ee1c571ea83efd68a43b31a0ac128ea7f322a" \
+  -d '{}'</code></pre></div>
+      </section>
+
+      <section id="limits">
+        <h2>Limits</h2>
+        <p>Ceilings apply to sandbox keys and their ledgers. A ceiling hit is a 409 <code>sandbox_limit_reached</code> naming the ceiling.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Ceiling</th><th>Value</th></tr></thead>
+            <tbody>
+              <tr><td>Ledgers per key</td><td>10</td></tr>
+              <tr><td>Accounts per ledger</td><td>50</td></tr>
+              <tr><td>Journal entries per ledger</td><td>10,000</td></tr>
+              <tr><td>Webhook endpoints per key</td><td>5</td></tr>
+              <tr><td>Open holds per account</td><td>100</td></tr>
+              <tr><td>Request body</td><td>64 KB</td></tr>
+              <tr><td>Metadata</td><td>20 keys, 500 character values</td></tr>
+              <tr><td>Idle sandbox ledger</td><td>deleted after 14 days without a write</td></tr>
+              <tr><td>Idle sandbox key</td><td>deleted after 30 days without a request, with its ledgers</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Exchange trading adds its own ceilings, on top of the ones above.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Exchange ceiling</th><th>Value</th></tr></thead>
+            <tbody>
+              <tr><td>Endpoint weight</td><td>1,200 per minute per key</td></tr>
+              <tr><td>Order placement</td><td>capped separately at 10 per second per key</td></tr>
+              <tr><td>Faucet</td><td>once per 24 hours per sandbox key</td></tr>
+              <tr><td>Public market data reads</td><td>cached 2 seconds, weight charged per address</td></tr>
+              <tr><td>Concurrent streams</td><td>10 per address</td></tr>
+              <tr><td>Public exchange verify</td><td>2 per minute per address</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="verify-it">
+        <h2>Verify it</h2>
+        <p>Two endpoints let a stranger check the books without taking anyone's word for it.</p>
+        <h3>A ledger you own</h3>
+        <p><code>GET /v1/ledgers/{id}/verify</code>, with your key, recomputes that ledger's whole hash chain from the first entry and confirms every asset it holds still sums to zero.</p>
+        <div class="block"><pre><code>curl -s https://plutus-ten-eta.vercel.app/v1/ledgers/$LEDGER/verify -H "Authorization: Bearer $KEY"</code></pre></div>
+        <h3>The exchange, with no key at all</h3>
+        <p><code>GET /v1/exchange/verify</code> takes no key and runs the same proof against the exchange's own ledger, so anyone can confirm the exchange has never created or destroyed money, without ever holding a key of their own. Limited to 2 requests per minute per address.</p>
+        <div class="block"><pre><code>curl -s https://plutus-ten-eta.vercel.app/v1/exchange/verify</code></pre></div>
+      </section>
+
+      <section id="source-and-licence">
+        <h2>Source and licence</h2>
+        <p>The full source, the migrations, the test suite and the design documents are on GitHub.</p>
+        <p><a href="https://github.com/atilladev-owner/Plutus">github.com/atilladev-owner/Plutus</a></p>
+        <p class="licence">Source available under the <a href="https://github.com/atilladev-owner/Plutus/blob/main/LICENSE.md">PolyForm Noncommercial License 1.0.0</a>. Read it, run it, learn from it. Commercial use needs the author's written permission.</p>
+      </section>
+    </main>
   </div>
 </body>
 </html>
