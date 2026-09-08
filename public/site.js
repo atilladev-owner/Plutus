@@ -397,6 +397,7 @@
 
     window.addEventListener("pageshow", function () {
       startTimers();
+      if (!eventSource) openStream();
     });
   }
 
