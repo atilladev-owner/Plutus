@@ -52,3 +52,31 @@ export async function rotateKey(c: PoolClient, id: string, next: { secretHash: B
   await c.query("insert into api_key_old_secrets (secret_hash, key_id, expires_at) select secret_hash, id, now() + interval '15 minutes' from api_keys where id = $1", [id]);
   await c.query("update api_keys set secret_hash = $2, last4 = $3 where id = $1", [id, next.secretHash, next.last4]);
 }
+
+/** Capped so one sweep against a large backlog finishes inside the pool's statement
+ * timeout; the next daily run drains whatever is left. The same cap, and the same reason for
+ * it, as purgeOld (src/db/events.ts) and purgeExpired (src/db/idempotency.ts). */
+export const SWEEP_DELETE_CAP = 5000;
+
+/**
+ * Deletes retiring secrets a full day past their expiry, at most SWEEP_DELETE_CAP per call.
+ * Called by the daily sweep.
+ *
+ * Security sweep, finding 5: rotateKey above writes one row per rotation and nothing ever
+ * removed one, so a key rotated on a schedule accumulated a hashed secret per rotation for
+ * as long as it existed. Nothing here authenticates past expires_at (findKeyBySecretHash and
+ * listActiveOldSecretHashes both require expires_at > now()), so a row is dead weight from
+ * the moment its fifteen minute grace period ends; the extra day before it is deleted is
+ * only so a row is never removed in the same minute it stops working, which keeps the
+ * database a usable record of what happened while a rotation is still being investigated.
+ * secret_hash is the table's own primary key, so the capped set is selected by it rather
+ * than by ctid the way a table with no single id column needs.
+ */
+export async function purgeExpiredOldSecrets(c: PoolClient): Promise<number> {
+  const r = await c.query(
+    `delete from api_key_old_secrets where secret_hash in (
+       select secret_hash from api_key_old_secrets where expires_at < now() - interval '1 day'
+       order by expires_at limit $1
+     )`, [SWEEP_DELETE_CAP]);
+  return r.rowCount ?? 0;
+}

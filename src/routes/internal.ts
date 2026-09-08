@@ -9,6 +9,7 @@ import { withTx } from "../db/pool.js";
 import * as L from "../db/ledger.js";
 import * as W from "../db/webhooks.js";
 import * as X from "../db/exchange.js";
+import * as K from "../db/keys.js";
 import { purgeOld } from "../db/events.js";
 import { purgeExpired } from "../db/idempotency.js";
 import { newId } from "../domain/ids.js";
@@ -22,6 +23,7 @@ const SweepOut = z.object({
   deleted_idempotency: z.number().int(),
   deleted_orders: z.number().int(),
   deleted_market_events: z.number().int(),
+  deleted_old_secrets: z.number().int(),
   republished_deliveries: z.number().int(),
   markets_refreshed: z.number().int(),
   house_topups: z.number().int(),
@@ -111,7 +113,8 @@ export async function topUpHouse(deps: AppDeps): Promise<number> {
  * statement timeout, and this way that timeout costs only this purge, not the event purge,
  * the idempotency purge or the stale delivery republish. The third purges old events,
  * expired idempotency records, the house's own terminal orders and the market events past
- * their 24 hour retention (each capped, see SWEEP_DELETE_CAP in the respective db
+ * their 24 hour retention, and the retiring key secrets a day past their grace period (each
+ * capped, see SWEEP_DELETE_CAP in the respective db
  * module), and republishes any delivery left pending past its due time (stalePending, in
  * src/db/webhooks.ts): one QStash message lost never costs a delivery, only a delay.
  * Guarded by CRON_SECRET compared in constant time; a missing secret refuses every call
@@ -154,8 +157,14 @@ async function sweep({ deps, req }: { deps: AppDeps; req: import("express").Requ
     // purge in this transaction is.
     const orders = await X.purgeHouseOrders(c);
     const marketEvents = await X.purgeMarketEvents(c);
+    // Security sweep, finding 5: rotation writes a retiring secret per call and nothing ever
+    // removed one, long after any of them could still authenticate.
+    const oldSecrets = await K.purgeExpiredOldSecrets(c);
     const stale = await W.stalePending(c, 60);
-    return { deleted_events: events, deleted_idempotency: idem, deleted_orders: orders, deleted_market_events: marketEvents, stale };
+    return {
+      deleted_events: events, deleted_idempotency: idem, deleted_orders: orders,
+      deleted_market_events: marketEvents, deleted_old_secrets: oldSecrets, stale,
+    };
   });
   for (const id of out.stale) await deps.scheduler.schedule(id, 0);
   const { stale, ...rest } = out;

@@ -216,6 +216,32 @@ describe("the sweep", () => {
     expect(report).toMatchObject({ ok: true, chain_ok: true, sequence_ok: true, replay_matches: true });
   });
 
+  // Security sweep, finding 5 (minor): every rotation writes a retiring secret with a fifteen
+  // minute grace period, and nothing ever deleted one. Rotated for real through the route
+  // rather than by inserting rows by hand, so the row under test is exactly the one a
+  // rotation writes; only its expiry is moved, which is the one thing a test cannot wait out.
+  it("purges retiring key secrets a day past their expiry and keeps the rest", async () => {
+    const { app, deps } = await makeTestApp();
+    const stale = await mintKey(app);
+    const recent = await mintKey(app);
+    const live = await mintKey(app);
+    for (const k of [stale, recent, live]) {
+      expect((await request(app).post("/v1/keys/rotate").set(bearer(k.secret)).send()).status).toBe(201);
+    }
+    // One well past the extra day the purge waits, one that expired an hour ago and is still
+    // inside it, and one still inside its own grace period, untouched.
+    await deps.pool.query("update api_key_old_secrets set expires_at = now() - interval '2 days' where key_id = $1", [stale.id]);
+    await deps.pool.query("update api_key_old_secrets set expires_at = now() - interval '1 hour' where key_id = $1", [recent.id]);
+
+    const res = await request(app).get("/internal/sweep").set("Authorization", `Bearer ${deps.config.CRON_SECRET}`);
+    expect(res.status).toBe(200);
+    expect(res.body.deleted_old_secrets).toBeGreaterThanOrEqual(1);
+
+    const { rows } = await deps.pool.query<{ key_id: string }>(
+      "select key_id from api_key_old_secrets where key_id = any($1::text[])", [[stale.id, recent.id, live.id]]);
+    expect(rows.map((r) => r.key_id).sort()).toEqual([recent.id, live.id].sort());
+  });
+
   // Security sweep, finding 1 (critical): nothing ever purged orders or market_events, and
   // refresh_house_ladder (db/migrations/0016_house_ladder.sql) cancels ten orders and places
   // ten more per market, writing a market event for each, every time an unauthenticated book
