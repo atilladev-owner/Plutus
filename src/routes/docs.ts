@@ -244,7 +244,7 @@ const SCALAR_CONFIG = {
 export function mountDocs(app: Express, _deps: AppDeps): void {
   const html = renderApiReference({
     config: SCALAR_CONFIG,
-    pageTitle: "Plutus API",
+    pageTitle: "Plutus API", cdn: "https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.68.0",
   })
     .replace("<html>", '<html lang="en">')
     .replace("<head>", "<head>" + FONT_LINKS + SITE_ASSET_LINKS + HISTORY_PATCH)
