@@ -3,13 +3,39 @@ import request from "supertest";
 import { makeTestApp } from "../helpers/app.js";
 import { mintKey, bearer } from "../helpers/keys.js";
 import { SWEEP_DELETE_CAP } from "../../src/db/events.js";
-import { withTx } from "../../src/db/pool.js";
+import { withTx, type Pool } from "../../src/db/pool.js";
 import { newId } from "../../src/domain/ids.js";
 import * as L from "../../src/db/ledger.js";
 import { EXCHANGE_LEDGER_ID, HOUSE_KEY_ID, placeOrder, cancelOrder, exchangeFaucet, type PlaceOrderInput } from "../../src/db/exchange.js";
 import { refreshColdMarkets, topUpHouse } from "../../src/routes/internal.js";
 import { resetExchangeBooks, verifyExchangeLedger } from "../helpers/exchange.js";
 import { signRequest } from "../../src/platform/signing.js";
+
+/** The house's three inventory accounts, id and balance by asset. */
+async function houseInventory(pool: Pool): Promise<Record<string, { id: string; balance: string }>> {
+  const { rows } = await pool.query<{ id: string; asset: string; balance: string }>(
+    "select id, asset, balance::text as balance from accounts where ledger_id = $1 and kind = 'normal' and name in ('BTC', 'ETH', 'USDT')",
+    [EXCHANGE_LEDGER_ID]);
+  return Object.fromEntries(rows.map((r) => [r.asset, { id: r.id, balance: r.balance }]));
+}
+
+/** Moves each house inventory account back to the balance it held in before, through the
+ * world, in one transfer. Used by the retention scenario below, which purges a house order a
+ * real trade named and so leaves that trade unattributable to the house. */
+async function restoreHouseInventory(pool: Pool, before: Record<string, { id: string; balance: string }>): Promise<void> {
+  const now = await houseInventory(pool);
+  const legs: Array<{ from: string; to: string; asset: string; amount: string }> = [];
+  for (const [asset, target] of Object.entries(before)) {
+    const diff = BigInt(target.balance) - BigInt(now[asset]?.balance ?? "0");
+    if (diff > 0n) legs.push({ from: `world:${asset}`, to: target.id, asset, amount: diff.toString() });
+    else if (diff < 0n) legs.push({ from: target.id, to: `world:${asset}`, asset, amount: (-diff).toString() });
+  }
+  if (legs.length === 0) return;
+  await withTx(pool, (c) => L.postTransfer(c, {
+    ledgerId: EXCHANGE_LEDGER_ID, transferId: newId("tr"), legs,
+    memo: "test: put the house back where the attributable trades leave it", metadata: {},
+  }));
+}
 
 describe("the sweep", () => {
   // Cross file contamination: matching.test.ts, exchange-orders.test.ts, house.test.ts,
@@ -262,6 +288,7 @@ describe("the sweep", () => {
     const { app, deps } = await makeTestApp();
     const buyer = await mintKey(app);
     await withTx(deps.pool, (c) => exchangeFaucet(c, buyer.id));
+    const houseBefore = await houseInventory(deps.pool);
 
     const houseSell: PlaceOrderInput = {
       keyId: HOUSE_KEY_ID, market: "BTC-USDT", clientOrderId: null, side: "sell", type: "limit",
@@ -312,6 +339,19 @@ describe("the sweep", () => {
 
     await deps.pool.query("delete from market_events where market = $1", [privateMarket]);
     await deps.pool.query("delete from markets where symbol = $1", [privateMarket]);
+
+    // The house is put back exactly where it stood before this scenario's own fill, through
+    // the world the same way every other correction in this suite moves money, because the
+    // purge above has made that one trade unattributable: it is the house's own order that
+    // named it as the house's, and that order is gone, so
+    // tests/property/exchange.property.test.ts, which reconciles the house's three inventory
+    // accounts globally by joining every trade back to the orders behind it, would see a
+    // balance its own reconciliation can no longer account for. The same discipline the top
+    // up scenario above already follows in leaving the house at exactly its seed. The
+    // difference is read rather than recomputed from the trade's own fee arithmetic, so this
+    // reverses whatever actually moved rather than whatever it was expected to.
+    await restoreHouseInventory(deps.pool, houseBefore);
+    expect(await houseInventory(deps.pool)).toEqual(houseBefore);
 
     const report = await verifyExchangeLedger();
     expect(report).toMatchObject({ ok: true, chain_ok: true, sequence_ok: true, replay_matches: true });
