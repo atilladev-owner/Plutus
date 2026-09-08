@@ -5,6 +5,7 @@ import { withTx } from "../db/pool.js";
 import { newId } from "../domain/ids.js";
 import { ApiError, notFound } from "../domain/errors.js";
 import * as W from "../db/webhooks.js";
+import { lockKey } from "../db/locks.js";
 import { IdParam, PageQuery, PagedOf } from "../schemas/common.js";
 import { EndpointCreate, EndpointPatch, EndpointOut, EndpointCreated, DeliveryOut } from "../schemas/webhooks.js";
 import { assertPublicWebhookUrl } from "../platform/webhook-url.js";
@@ -17,7 +18,12 @@ export const webhookRoutes = [
   defineRoute({ method: "post", path: "/v1/webhooks", summary: "Register an endpoint. The secret is shown once", tag: "Webhooks", auth: "bearer", scope: "webhooks:manage", idempotent: true, status: 201,
     body: EndpointCreate, response: EndpointCreated,
     handler: async ({ key, body, tx }) => tx(async (c) => {
-      if (key!.mode === "test" && (await W.countEndpoints(c, key!.id)) >= 5) throw new ApiError(409, "sandbox_limit_reached", "webhook endpoints per key: 5");
+      if (key!.mode === "test") {
+        // The key's own row first, then the count: without the lock, concurrent registrations
+        // for one key each counted four and each inserted a fifth (see src/db/locks.ts).
+        await lockKey(c, key!.id);
+        if ((await W.countEndpoints(c, key!.id)) >= 5) throw new ApiError(409, "sandbox_limit_reached", "webhook endpoints per key: 5");
+      }
       const secret = `whsec_${randomBytes(24).toString("base64url")}`;
       const row = await W.insertEndpoint(c, { id: newId("whe"), keyId: key!.id, url: body.url, secret, events: body.events });
       return { ...endpointOut(row), secret };

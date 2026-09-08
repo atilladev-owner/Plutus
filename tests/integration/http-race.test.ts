@@ -35,4 +35,62 @@ describe("the race, through the API", () => {
     const v = await request(app).get(`/v1/ledgers/${l.id}/verify`).set(h);
     expect(v.body.ok).toBe(true);
   });
+
+  // Security sweep, finding 4 (important): each sandbox ceiling was a select count(*) then an
+  // insert, in one transaction but with nothing locked between them, so concurrent creates
+  // for one key all read the same count, all saw room and all inserted. The owning row is
+  // locked before the count now (src/db/locks.ts). Eleven and six at once rather than two:
+  // one extra request would pass on a lucky interleaving even against the old code, while a
+  // whole batch past the ceiling makes the failure certain rather than occasional.
+  it("never exceeds the ten ledger ceiling under eleven concurrent creates for one key", async () => {
+    const { app } = await makeTestApp();
+    const k = await mintKey(app);
+    const h = bearer(k.secret);
+    const results = await Promise.all(Array.from({ length: 11 }, (_, i) =>
+      request(app).post("/v1/ledgers").set(h).send({ name: `race-${i}` })));
+    for (const r of results) expect([201, 409]).toContain(r.status);
+    expect(results.filter((r) => r.status === 201)).toHaveLength(10);
+    for (const r of results.filter((r) => r.status === 409)) expect(r.body.code).toBe("sandbox_limit_reached");
+    const list = await request(app).get("/v1/ledgers").set(h);
+    expect(list.body.data).toHaveLength(10);
+  });
+
+  it("never exceeds the five webhook endpoint ceiling under six concurrent registrations for one key", async () => {
+    const { app } = await makeTestApp();
+    const k = await mintKey(app);
+    const h = bearer(k.secret);
+    // Three registered first, then six at once. Firing all six against an empty account
+    // would prove nothing: the pool holds five connections (src/db/pool.ts), so at most five
+    // of them can ever be in flight together, and five requests that all count zero insert
+    // exactly five, the ceiling, even with no lock at all. Starting three short of the
+    // ceiling is what puts the boundary inside the concurrent batch, where the race is.
+    for (let i = 0; i < 3; i++) {
+      expect((await request(app).post("/v1/webhooks").set(h).send({ url: `https://example.com/seed-${i}`, events: ["*"] })).status).toBe(201);
+    }
+    const results = await Promise.all(Array.from({ length: 6 }, (_, i) =>
+      request(app).post("/v1/webhooks").set(h).send({ url: `https://example.com/hook-${i}`, events: ["*"] })));
+    for (const r of results) expect([201, 409]).toContain(r.status);
+    expect(results.filter((r) => r.status === 201)).toHaveLength(2);
+    for (const r of results.filter((r) => r.status === 409)) expect(r.body.code).toBe("sandbox_limit_reached");
+    const list = await request(app).get("/v1/webhooks").set(h);
+    expect(list.body.data).toHaveLength(5);
+  });
+
+  it("never exceeds the fifty account ceiling under concurrent creates for one ledger", async () => {
+    const { app } = await makeTestApp();
+    const k = await mintKey(app);
+    const h = bearer(k.secret);
+    const l = (await request(app).post("/v1/ledgers").set(h).send({ name: "accounts" })).body;
+    // Forty five sequentially, to get close to the ceiling cheaply, then eight at once across
+    // it: the race is only ever at the boundary, and one ledger create plus forty five plus
+    // eight is fifty four requests, inside the sandbox key's own sixty a minute budget.
+    for (let i = 0; i < 45; i++) {
+      expect((await request(app).post(`/v1/ledgers/${l.id}/accounts`).set(h).send({ asset: "USD", name: `a${i}` })).status).toBe(201);
+    }
+    const results = await Promise.all(Array.from({ length: 8 }, (_, i) =>
+      request(app).post(`/v1/ledgers/${l.id}/accounts`).set(h).send({ asset: "USD", name: `race-${i}` })));
+    for (const r of results) expect([201, 409]).toContain(r.status);
+    expect(results.filter((r) => r.status === 201)).toHaveLength(5);
+    for (const r of results.filter((r) => r.status === 409)) expect(r.body.code).toBe("sandbox_limit_reached");
+  });
 });

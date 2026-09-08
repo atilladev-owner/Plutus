@@ -4,6 +4,7 @@ import { withTx } from "../db/pool.js";
 import { newId } from "../domain/ids.js";
 import { ApiError, notFound, validation } from "../domain/errors.js";
 import * as L from "../db/ledger.js";
+import { lockLedger } from "../db/locks.js";
 import { IdParam, PageQuery, PagedOf } from "../schemas/common.js";
 import { AccountCreate, AccountOut } from "../schemas/accounts.js";
 import { ownLedger } from "./ledgers.js";
@@ -26,7 +27,13 @@ export const accountRoutes = [
       const ledger = await ownLedger(c, key!.id, params.id);
       const asset = await c.query("select 1 from assets where code = $1", [body.asset]);
       if (asset.rowCount === 0) throw validation("unknown asset", [{ path: "asset", message: `no asset ${body.asset}` }]);
-      if (key!.mode === "test" && (await L.countAccounts(c, ledger.id)) >= 50) throw new ApiError(409, "sandbox_limit_reached", "accounts per ledger: 50");
+      if (key!.mode === "test") {
+        // The owning ledger's row first, then the count: ownLedger above reads it with a
+        // plain select and locks nothing, so without this two concurrent creates for one
+        // ledger each counted forty nine and each inserted a fiftieth (see src/db/locks.ts).
+        await lockLedger(c, ledger.id);
+        if ((await L.countAccounts(c, ledger.id)) >= 50) throw new ApiError(409, "sandbox_limit_reached", "accounts per ledger: 50");
+      }
       return accountOut(await L.createAccount(c, { id: newId("acct"), ledgerId: ledger.id, asset: body.asset, name: body.name, metadata: body.metadata }));
     }),
   }),

@@ -5,6 +5,7 @@ import { withTx } from "../db/pool.js";
 import { newId } from "../domain/ids.js";
 import { ApiError, notFound } from "../domain/errors.js";
 import * as L from "../db/ledger.js";
+import { lockKey } from "../db/locks.js";
 import { IdParam, PageQuery, PagedOf } from "../schemas/common.js";
 import { LedgerCreate, LedgerOut } from "../schemas/ledgers.js";
 
@@ -26,7 +27,12 @@ export const ledgerRoutes = [
     body: LedgerCreate, response: LedgerOut,
     // No afterCommit: creating a ledger writes no journal entry and emits no events.
     handler: async ({ key, body, tx }) => tx(async (c) => {
-      if (key!.mode === "test" && (await L.countLedgers(c, key!.id)) >= 10) throw new ApiError(409, "sandbox_limit_reached", "ledgers per key: 10");
+      if (key!.mode === "test") {
+        // The key's own row first, then the count: without the lock, concurrent creates for
+        // one key each counted nine and each inserted a tenth (see src/db/locks.ts).
+        await lockKey(c, key!.id);
+        if ((await L.countLedgers(c, key!.id)) >= 10) throw new ApiError(409, "sandbox_limit_reached", "ledgers per key: 10");
+      }
       return ledgerOut(await L.createLedger(c, { id: newId("ldg"), keyId: key!.id, name: body.name }));
     }),
   }),
