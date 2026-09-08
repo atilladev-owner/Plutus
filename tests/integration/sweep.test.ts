@@ -3,39 +3,13 @@ import request from "supertest";
 import { makeTestApp } from "../helpers/app.js";
 import { mintKey, bearer } from "../helpers/keys.js";
 import { SWEEP_DELETE_CAP } from "../../src/db/events.js";
-import { withTx, type Pool } from "../../src/db/pool.js";
+import { withTx } from "../../src/db/pool.js";
 import { newId } from "../../src/domain/ids.js";
 import * as L from "../../src/db/ledger.js";
 import { EXCHANGE_LEDGER_ID, HOUSE_KEY_ID, placeOrder, cancelOrder, exchangeFaucet, type PlaceOrderInput } from "../../src/db/exchange.js";
 import { refreshColdMarkets, topUpHouse } from "../../src/routes/internal.js";
 import { resetExchangeBooks, verifyExchangeLedger } from "../helpers/exchange.js";
 import { signRequest } from "../../src/platform/signing.js";
-
-/** The house's three inventory accounts, id and balance by asset. */
-async function houseInventory(pool: Pool): Promise<Record<string, { id: string; balance: string }>> {
-  const { rows } = await pool.query<{ id: string; asset: string; balance: string }>(
-    "select id, asset, balance::text as balance from accounts where ledger_id = $1 and kind = 'normal' and name in ('BTC', 'ETH', 'USDT')",
-    [EXCHANGE_LEDGER_ID]);
-  return Object.fromEntries(rows.map((r) => [r.asset, { id: r.id, balance: r.balance }]));
-}
-
-/** Moves each house inventory account back to the balance it held in before, through the
- * world, in one transfer. Used by the retention scenario below, which purges a house order a
- * real trade named and so leaves that trade unattributable to the house. */
-async function restoreHouseInventory(pool: Pool, before: Record<string, { id: string; balance: string }>): Promise<void> {
-  const now = await houseInventory(pool);
-  const legs: Array<{ from: string; to: string; asset: string; amount: string }> = [];
-  for (const [asset, target] of Object.entries(before)) {
-    const diff = BigInt(target.balance) - BigInt(now[asset]?.balance ?? "0");
-    if (diff > 0n) legs.push({ from: `world:${asset}`, to: target.id, asset, amount: diff.toString() });
-    else if (diff < 0n) legs.push({ from: target.id, to: `world:${asset}`, asset, amount: (-diff).toString() });
-  }
-  if (legs.length === 0) return;
-  await withTx(pool, (c) => L.postTransfer(c, {
-    ledgerId: EXCHANGE_LEDGER_ID, transferId: newId("tr"), legs,
-    memo: "test: put the house back where the attributable trades leave it", metadata: {},
-  }));
-}
 
 describe("the sweep", () => {
   // Cross file contamination: matching.test.ts, exchange-orders.test.ts, house.test.ts,
@@ -272,9 +246,10 @@ describe("the sweep", () => {
   // refresh_house_ladder (db/migrations/0016_house_ladder.sql) cancels ten orders and places
   // ten more per market, writing a market event for each, every time an unauthenticated book
   // read finds that market's ladder older than fifteen seconds. Both tables are kept to 24
-  // hours by the sweep now. The house order purged below is a real one, placed as key_house
-  // and filled by a real crossing buy, so the trade that names it, its transfer and the
-  // ledger are all genuine rather than hand written rows.
+  // hours by the sweep now. The orders below are real ones, placed as key_house and, for the
+  // filled one, crossed by a real buy, so the trade that names it, its transfer and the
+  // ledger are all genuine rather than hand written rows. That filled order must survive the
+  // purge however old it is: it is the row that says the house was the seller in that trade.
   //
   // The market events half runs against a market of this test's own, registered here and
   // removed at the end, for the same reason tests/integration/stream.test.ts registers one:
@@ -283,12 +258,11 @@ describe("the sweep", () => {
   // deleting the oldest row of either would leave a hole those checks would rightly fail on.
   // Its house_quoted_at is set to now so refreshColdMarkets skips it: this market has no
   // reference price and no ladder, and quoting one is not what is under test here.
-  it("purges the house's own old terminal orders and old market events, keeping fresh ones, every other key's orders, and the trade", async () => {
+  it("purges the house's own old unfilled quotes and old market events, keeping fresh ones, every other key's orders, and any order a trade names", async () => {
     await resetExchangeBooks();
     const { app, deps } = await makeTestApp();
     const buyer = await mintKey(app);
     await withTx(deps.pool, (c) => exchangeFaucet(c, buyer.id));
-    const houseBefore = await houseInventory(deps.pool);
 
     const houseSell: PlaceOrderInput = {
       keyId: HOUSE_KEY_ID, market: "BTC-USDT", clientOrderId: null, side: "sell", type: "limit",
@@ -301,13 +275,18 @@ describe("the sweep", () => {
     if (!trade) throw new Error("the crossing order did not fill against the house's own order");
     expect(trade.sell_order_id).toBe(rest.order.id);
 
-    // Both sides of the fill are aged past the retention window together: only the house's
-    // own is the sweep's to delete, since every other key's orders already go with the key
-    // itself when the idle sandbox sweep removes it.
-    await deps.pool.query("update orders set updated_at = now() - interval '25 hours' where id = any($1::text[])", [[rest.order.id, taker.order.id]]);
-    // A second house order, terminal but cancelled a moment ago rather than aged, to prove
-    // the age bound is real and not "every terminal house order". Cancelled through
+    // The shape every ladder refresh leaves behind: a house quote nobody filled, cancelled,
+    // then aged past the window. This is the one row the sweep is for. Cancelled through
     // cancel_order, the way any real cancellation runs, so its hold is released too.
+    const staleQuote = await placeOrder(deps.pool, { ...houseSell, price: "970000000000" });
+    await withTx(deps.pool, (c) => cancelOrder(c, HOUSE_KEY_ID, staleQuote.order.id));
+    // Both sides of the fill are aged past the window along with it. The buyer's order is
+    // not the sweep's to delete (every other key's orders go with the key itself when the
+    // idle sandbox sweep removes it) and the house's filled order is named by the trade, so
+    // of the three aged rows only the unfilled quote may go.
+    await deps.pool.query("update orders set updated_at = now() - interval '25 hours' where id = any($1::text[])", [[rest.order.id, taker.order.id, staleQuote.order.id]]);
+    // A fourth house order, terminal but cancelled a moment ago rather than aged, to prove
+    // the age bound is real and not "every unfilled terminal house order".
     const freshHouse = await placeOrder(deps.pool, { ...houseSell, price: "960000000000" });
     await withTx(deps.pool, (c) => cancelOrder(c, HOUSE_KEY_ID, freshHouse.order.id));
 
@@ -326,12 +305,12 @@ describe("the sweep", () => {
     expect(res.body.deleted_market_events).toBeGreaterThanOrEqual(1);
 
     const survivors = await deps.pool.query<{ id: string }>(
-      "select id from orders where id = any($1::text[])", [[rest.order.id, taker.order.id, freshHouse.order.id]]);
-    expect(survivors.rows.map((r) => r.id).sort()).toEqual([taker.order.id, freshHouse.order.id].sort());
+      "select id from orders where id = any($1::text[])", [[rest.order.id, taker.order.id, staleQuote.order.id, freshHouse.order.id]]);
+    expect(survivors.rows.map((r) => r.id).sort()).toEqual([rest.order.id, taker.order.id, freshHouse.order.id].sort());
 
     const { rows: tradeRows } = await deps.pool.query<{ buy_order_id: string | null; sell_order_id: string | null; quantity: string }>(
       "select buy_order_id, sell_order_id, quantity::text as quantity from trades where id = $1", [trade.id]);
-    expect(tradeRows[0]).toMatchObject({ buy_order_id: taker.order.id, sell_order_id: null, quantity: trade.quantity });
+    expect(tradeRows[0]).toMatchObject({ buy_order_id: taker.order.id, sell_order_id: rest.order.id, quantity: trade.quantity });
 
     const { rows: eventRows } = await deps.pool.query<{ seq: string }>(
       "select seq::text as seq from market_events where market = $1 order by seq", [privateMarket]);
@@ -339,19 +318,6 @@ describe("the sweep", () => {
 
     await deps.pool.query("delete from market_events where market = $1", [privateMarket]);
     await deps.pool.query("delete from markets where symbol = $1", [privateMarket]);
-
-    // The house is put back exactly where it stood before this scenario's own fill, through
-    // the world the same way every other correction in this suite moves money, because the
-    // purge above has made that one trade unattributable: it is the house's own order that
-    // named it as the house's, and that order is gone, so
-    // tests/property/exchange.property.test.ts, which reconciles the house's three inventory
-    // accounts globally by joining every trade back to the orders behind it, would see a
-    // balance its own reconciliation can no longer account for. The same discipline the top
-    // up scenario above already follows in leaving the house at exactly its seed. The
-    // difference is read rather than recomputed from the trade's own fee arithmetic, so this
-    // reverses whatever actually moved rather than whatever it was expected to.
-    await restoreHouseInventory(deps.pool, houseBefore);
-    expect(await houseInventory(deps.pool)).toEqual(houseBefore);
 
     const report = await verifyExchangeLedger();
     expect(report).toMatchObject({ ok: true, chain_ok: true, sequence_ok: true, replay_matches: true });

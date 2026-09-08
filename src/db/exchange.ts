@@ -308,12 +308,17 @@ export const SWEEP_DELETE_CAP = 5000;
  * removed a house order: key_house is a live mode key, deliberately exempt from the idle
  * sandbox sweep (0011_exchange.sql), so deleteIdleSandbox's cascade never reaches it.
  *
- * Only key_house's own rows are deleted, and only ones already in a terminal status. Every
- * other key's orders go with the key itself when the idle sweep removes it, so deleting
- * them here would only race that cascade for no gain. Trades reference orders with
- * on delete set null since 0017_trades_survive_key_deletion.sql, so a trade whose house
- * order this removes keeps its row, its price and its quantity, with that one side reading
- * null; the public tape and the candles (src/db/market-data.ts) read neither column.
+ * Only key_house's own rows are deleted, only ones already in a terminal status, and only
+ * ones no trade names on either side. Every other key's orders go with the key itself when
+ * the idle sweep removes it, so deleting them here would only race that cascade for no gain.
+ * A house order a trade did name stays for as long as the trade does: it is the row that
+ * says which side of that fill was the house's, and anything reconciling the house's
+ * inventory from its trades (tests/property/exchange.property.test.ts does exactly that)
+ * would drift the moment it went. Those orders are the rare ones anyway, one per fill a
+ * trader made against the ladder; the flood this purge exists for is the ten cancelled,
+ * never filled quotes every ladder refresh leaves behind. 0019_trade_order_indexes.sql
+ * indexes both trade sides so that check, and the set null cascade from
+ * 0017_trades_survive_key_deletion.sql, never scan the trades table.
  *
  * The capped set is selected by ctid, Postgres's own physical row identifier, the pattern
  * purgeExpired uses for a table with no single id column: orders does have one, but
@@ -326,6 +331,7 @@ export async function purgeHouseOrders(c: PoolClient): Promise<number> {
        select ctid from orders
        where key_id = $1 and status in ('filled', 'cancelled', 'rejected')
          and updated_at < now() - interval '24 hours'
+         and not exists (select 1 from trades t where t.buy_order_id = orders.id or t.sell_order_id = orders.id)
        order by updated_at limit $2
      )`, [HOUSE_KEY_ID, SWEEP_DELETE_CAP]);
   return r.rowCount ?? 0;
