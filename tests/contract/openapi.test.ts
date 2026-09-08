@@ -50,4 +50,15 @@ describe("openapi.json", () => {
     expect(res.status).toBe(200);
     expect(res.text).toContain("openapi.json");
   });
+  // Security sweep, finding 6 (minor): the reference bundle is the one file this page loads
+  // from someone else's server, and its script tag carried no integrity attribute, so
+  // whatever the CDN answered with would have run. The hash is pinned in src/routes/docs.ts
+  // and applied by string replacement, which would silently do nothing if the emitted tag
+  // ever changed shape, so this asserts the finished tag rather than the constant.
+  it("pins the reference bundle with a subresource integrity hash", async () => {
+    const { app } = await makeTestApp();
+    const res = await request(app).get("/docs");
+    expect(res.text).toMatch(
+      /<script src="https:\/\/cdn\.jsdelivr\.net\/npm\/@scalar\/api-reference@1\.68\.0" integrity="sha384-[A-Za-z0-9+/]{64}" crossorigin="anonymous"><\/script>/);
+  });
 });

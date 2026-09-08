@@ -248,15 +248,39 @@ const MAKER_MARK =
   '<img class="crest-light" src="/atilla-crest-black.webp" alt="" width="26" height="26">' +
   '<img class="crest-dark" src="/atilla-crest-gold.webp" alt="" width="26" height="26">Product of Atilla Dev</a>';
 
+/** The one file this page loads from anyone else's server. renderApiReference emits a script
+ * tag pointing straight at it, so whatever jsDelivr answers with runs with full access to
+ * this origin's page. */
+const SCALAR_CDN = "https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.68.0";
+
+/**
+ * Security sweep, finding 6: that script tag carried no integrity attribute, so a compromised
+ * or hijacked CDN response would simply have executed. This is the SHA-384, base64, of
+ * exactly what SCALAR_CDN above serves, fetched and hashed by hand; the browser refuses to
+ * run a response whose hash does not match, which is the whole point of pinning a version.
+ *
+ * It must be recomputed whenever that pin changes, and it is the reason the pin cannot be
+ * bumped casually: a stale hash does not degrade the page, it stops the bundle running at
+ * all. One caveat worth knowing before touching either: jsDelivr minifies this URL itself
+ * (the response opens with its own "Minified by jsDelivr using Terser" banner) rather than
+ * serving the package's file untouched, so the bytes are jsDelivr's own build of a pinned
+ * version, and a change to their minifier would break this hash without anything here or in
+ * the package changing. The response is served immutable, and hashes identically under gzip,
+ * brotli and no encoding at all, so nothing routine moves it.
+ */
+const SCALAR_BUNDLE_INTEGRITY = "sha384-ayGz8N+NChlUEfR0zr5Zy3T6Q4lhcdiASJNoshS6+vxV56ZE300qfWNBjj9pqsLN";
+
 /** Mounted separately because Scalar is a rendered page, not a route with a schema. */
 export function mountDocs(app: Express, _deps: AppDeps): void {
   const html = renderApiReference({
     config: SCALAR_CONFIG,
-    pageTitle: "Plutus API", cdn: "https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.68.0",
+    pageTitle: "Plutus API", cdn: SCALAR_CDN,
   })
     .replace("<html>", '<html lang="en">')
     .replace("<head>", "<head>" + FONT_LINKS + SITE_ASSET_LINKS + HISTORY_PATCH)
     .replace("<body>", "<body>" + TOPBAR_HTML)
+    .replace(`<script src="${SCALAR_CDN}"></script>`,
+      `<script src="${SCALAR_CDN}" integrity="${SCALAR_BUNDLE_INTEGRITY}" crossorigin="anonymous"></script>`)
     .replace("</body>", MAKER_MARK + "</body>");
   app.get("/docs", (_req, res) => { res.type("text/html").send(html); });
 }
