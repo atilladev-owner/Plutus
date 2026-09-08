@@ -22,6 +22,21 @@ describe("openapi.json", () => {
     expect(transfer.security).toEqual([{ bearer: [] }]);
     expect(res.body.components.securitySchemes.bearer.scheme).toBe("bearer");
   });
+  // Security sweep, finding 7 (minor): the two /internal paths are cron routes guarded by
+  // CRON_SECRET, not part of the public contract. buildOpenApi (src/schemas/openapi.ts)
+  // already skips any route whose path starts with /internal, and the first test above
+  // already proves no registered internal route is documented. What was missing is the other
+  // half of that claim: that leaving them out of the document changed nothing about the
+  // routes themselves, which still exist and still refuse an unauthenticated call.
+  it("keeps the internal cron routes out of the document while they still answer", async () => {
+    const { app } = await makeTestApp();
+    const res = await request(app).get("/openapi.json");
+    expect(Object.keys(res.body.paths).filter((p) => p.startsWith("/internal"))).toEqual([]);
+    expect((await request(app).get("/internal/sweep")).status).toBe(401);
+    expect((await request(app).post("/internal/sweep").send()).status).toBe(401);
+    const deliver = await request(app).post("/internal/webhooks/deliver").send({ delivery_id: `whd_${"0".repeat(32)}` });
+    expect(deliver.status).toBe(401);
+  });
   it("documents every exchange route, the stream path item, and the signed security scheme", async () => {
     const { app } = await makeTestApp();
     const res = await request(app).get("/openapi.json");
