@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import type { Queryable } from "./exchange.js";
 
 export interface KeyRow { id: string; secret_hash: Buffer; prefix: string; last4: string; mode: "test" | "live"; scopes: string[]; created_at: Date; last_used_at: Date | null; expires_at: Date | null; revoked_at: Date | null }
 
@@ -70,9 +71,13 @@ export const SWEEP_DELETE_CAP = 5000;
  * only so a row is never removed in the same minute it stops working, which keeps the
  * database a usable record of what happened while a rotation is still being investigated.
  * secret_hash is the table's own primary key, so the capped set is selected by it rather
- * than by ctid the way a table with no single id column needs.
+ * than by ctid the way a table with no single id column needs, and
+ * 0019_retention_indexes.sql indexes expires_at so the ordered scan walks the oldest rows
+ * instead of sorting the table to find them. Takes the pool or a client: the sweep runs this
+ * as a statement of its own rather than inside a shared transaction (see Queryable in
+ * src/db/exchange.ts).
  */
-export async function purgeExpiredOldSecrets(c: PoolClient): Promise<number> {
+export async function purgeExpiredOldSecrets(c: Queryable): Promise<number> {
   const r = await c.query(
     `delete from api_key_old_secrets where secret_hash in (
        select secret_hash from api_key_old_secrets where expires_at < now() - interval '1 day'

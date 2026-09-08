@@ -106,19 +106,41 @@ export async function topUpHouse(deps: AppDeps): Promise<number> {
 }
 
 /**
- * Daily housekeeping, in three transactions. The first expires holds whose time is up and
- * commits on its own. The second deletes idle sandbox ledgers and keys, alone: a ledger
- * delete cascades to its accounts, transfers, legs, holds and journal rows, so against a
- * large enough idle backlog it can run long enough on its own to hit the pool's 25 second
- * statement timeout, and this way that timeout costs only this purge, not the event purge,
- * the idempotency purge or the stale delivery republish. The third purges old events,
- * expired idempotency records, the house's own terminal orders and the market events past
- * their 24 hour retention, and the retiring key secrets a day past their grace period (each
- * capped, see SWEEP_DELETE_CAP in the respective db
- * module), and republishes any delivery left pending past its due time (stalePending, in
- * src/db/webhooks.ts): one QStash message lost never costs a delivery, only a delay.
- * Guarded by CRON_SECRET compared in constant time; a missing secret refuses every call
- * rather than accepting one.
+ * Runs one capped delete as a statement of its own on the pool, logging and answering zero
+ * rather than throwing.
+ *
+ * Review round 1, finding 1: the retention purges used to run inside the same transaction as
+ * the event purge, the idempotency purge and the stale delivery republish, with no catch of
+ * their own. One of them hitting the pool's 25 second statement timeout therefore rolled
+ * back every other purge in that transaction, and, since the throw escaped sweep() entirely,
+ * skipped the house ladder refresh and the house top up as well, on the day the sweep had
+ * the most reason to run both. None of them needs a transaction at all: one capped delete is
+ * atomic by itself. Each failure now costs only its own statement, which is the discipline
+ * the idle sandbox purge above already applies.
+ */
+async function purgeCapped(deps: AppDeps, table: string, run: () => Promise<number>): Promise<number> {
+  try {
+    return await run();
+  } catch (err) {
+    deps.logger.error({ table, err: (err as Error).message }, "retention purge failed; the next sweep tries again");
+    return 0;
+  }
+}
+
+/**
+ * Daily housekeeping, in three transactions and then a run of capped deletes that share
+ * none. The first transaction expires holds whose time is up and commits on its own. The
+ * second deletes idle sandbox ledgers and keys, alone: a ledger delete cascades to its
+ * accounts, transfers, legs, holds and journal rows, so against a large enough idle backlog
+ * it can run long enough on its own to hit the pool's 25 second statement timeout, and this
+ * way that timeout costs only this purge, not the event purge, the idempotency purge or the
+ * stale delivery republish. The third purges old events and expired idempotency records
+ * (each capped, see SWEEP_DELETE_CAP in the respective db module) and republishes any
+ * delivery left pending past its due time (stalePending, in src/db/webhooks.ts): one QStash
+ * message lost never costs a delivery, only a delay. The retention purges follow, each a
+ * capped delete of its own through purgeCapped above, so none of them can roll back or skip
+ * anything else the sweep does. Guarded by CRON_SECRET compared in constant time; a missing
+ * secret refuses every call rather than accepting one.
  */
 async function sweep({ deps, req }: { deps: AppDeps; req: import("express").Request }) {
   const secret = deps.config.CRON_SECRET;
@@ -150,28 +172,24 @@ async function sweep({ deps, req }: { deps: AppDeps; req: import("express").Requ
   const out = await withTx(deps.pool, async (c) => {
     const events = await purgeOld(c);
     const idem = await purgeExpired(c);
-    // Security sweep, finding 1: the house ladder's own orders and the market events every
-    // refresh writes were the two exchange tables nothing ever removed, and an
-    // unauthenticated book read is all it takes to grow both (see purgeHouseOrders in
-    // src/db/exchange.ts). Both are kept to 24 hours, both capped the same way every other
-    // purge in this transaction is.
-    const orders = await X.purgeHouseOrders(c);
-    const marketEvents = await X.purgeMarketEvents(c);
-    // Security sweep, finding 5: rotation writes a retiring secret per call and nothing ever
-    // removed one, long after any of them could still authenticate.
-    const oldSecrets = await K.purgeExpiredOldSecrets(c);
     const stale = await W.stalePending(c, 60);
-    return {
-      deleted_events: events, deleted_idempotency: idem, deleted_orders: orders,
-      deleted_market_events: marketEvents, deleted_old_secrets: oldSecrets, stale,
-    };
+    return { deleted_events: events, deleted_idempotency: idem, stale };
   });
   for (const id of out.stale) await deps.scheduler.schedule(id, 0);
   const { stale, ...rest } = out;
+  // Security sweep, finding 1: the house ladder's own orders and the market events every
+  // refresh writes were the two exchange tables nothing ever removed, and an unauthenticated
+  // book read is all it takes to grow both (see purgeHouseOrders in src/db/exchange.ts).
+  // Finding 5: rotation writes a retiring secret per call and nothing ever removed one, long
+  // after any of them could still authenticate. Each runs on the pool, alone.
+  const deletedOrders = await purgeCapped(deps, "orders", () => X.purgeHouseOrders(deps.pool));
+  const deletedMarketEvents = await purgeCapped(deps, "market_events", () => X.purgeMarketEvents(deps.pool));
+  const deletedOldSecrets = await purgeCapped(deps, "api_key_old_secrets", () => K.purgeExpiredOldSecrets(deps.pool));
   const marketsRefreshed = await refreshColdMarkets(deps);
   const houseTopups = await topUpHouse(deps);
   return {
     expired_holds: expiredHolds, deleted_ledgers: idle.ledgers, deleted_keys: idle.keys, ...rest,
+    deleted_orders: deletedOrders, deleted_market_events: deletedMarketEvents, deleted_old_secrets: deletedOldSecrets,
     republished_deliveries: stale.length, markets_refreshed: marketsRefreshed, house_topups: houseTopups,
   };
 }

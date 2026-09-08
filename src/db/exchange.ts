@@ -292,10 +292,19 @@ export async function listMyTrades(c: PoolClient, keyId: string, page: Page): Pr
   return pageOf(rows, page.limit);
 }
 
-/** Capped so one sweep against a large backlog finishes inside the pool's statement
- * timeout; the next daily run drains whatever is left. The same cap, and the same reason
- * for it, as purgeOld (src/db/events.ts) and purgeExpired (src/db/idempotency.ts). */
+/** Capped so one delete finishes well inside the pool's statement timeout. The same cap,
+ * and the same reason for it, as purgeOld (src/db/events.ts) and purgeExpired
+ * (src/db/idempotency.ts); unlike those two, the sweep repeats the capped delete until a
+ * call comes back short rather than waiting a day for the next run (drain, in
+ * src/routes/internal.ts). */
 export const SWEEP_DELETE_CAP = 5000;
+
+/** A pooled client inside a caller's transaction, or the pool itself, which runs the
+ * statement on its own and commits it there and then. The retention purges below take
+ * either, because the sweep deliberately runs each of them as a statement of its own: one
+ * capped delete is atomic by itself, and sharing a transaction with the rest of the sweep
+ * would let one slow purge roll back everything else in it. */
+export type Queryable = Pool | PoolClient;
 
 /**
  * Deletes the house's own terminal orders older than 24 hours, at most SWEEP_DELETE_CAP per
@@ -316,16 +325,18 @@ export const SWEEP_DELETE_CAP = 5000;
  * inventory from its trades (tests/property/exchange.property.test.ts does exactly that)
  * would drift the moment it went. Those orders are the rare ones anyway, one per fill a
  * trader made against the ladder; the flood this purge exists for is the ten cancelled,
- * never filled quotes every ladder refresh leaves behind. 0019_trade_order_indexes.sql
+ * never filled quotes every ladder refresh leaves behind. 0019_retention_indexes.sql
  * indexes both trade sides so that check, and the set null cascade from
- * 0017_trades_survive_key_deletion.sql, never scan the trades table.
+ * 0017_trades_survive_key_deletion.sql, never scan the trades table, and carries a partial
+ * index on this statement's own predicate so the ordered scan reads only candidates rather
+ * than sorting every house order the table holds.
  *
  * The capped set is selected by ctid, Postgres's own physical row identifier, the pattern
  * purgeExpired uses for a table with no single id column: orders does have one, but
  * purgeMarketEvents below genuinely does not, and the two reading identically is worth more
  * here than each using the narrowest form it could.
  */
-export async function purgeHouseOrders(c: PoolClient): Promise<number> {
+export async function purgeHouseOrders(c: Queryable): Promise<number> {
   const r = await c.query(
     `delete from orders where ctid in (
        select ctid from orders
@@ -352,8 +363,11 @@ export async function purgeHouseOrders(c: PoolClient): Promise<number> {
  *
  * market_events has no single id column (its primary key is (market, seq)), so ctid selects
  * the capped set, exactly as purgeExpired does for idempotency_keys.
+ * 0019_retention_indexes.sql indexes created_at, so the oldest rows are walked in order
+ * rather than found by sorting the whole table, which on the table that grows fastest of the
+ * three is the difference between a bounded delete and one that times out.
  */
-export async function purgeMarketEvents(c: PoolClient): Promise<number> {
+export async function purgeMarketEvents(c: Queryable): Promise<number> {
   const r = await c.query(
     `delete from market_events where ctid in (
        select ctid from market_events where created_at < now() - interval '24 hours'
