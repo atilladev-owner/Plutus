@@ -108,8 +108,12 @@ function parseSubscriptions(raw: unknown): Subscription[] {
   });
 }
 
-/** since is optional, defaulting to 0 (replay from the start of the market); when present it
- * must be a plain nonnegative integer string. */
+/** since is optional, defaulting to 0 (replay from the oldest event still retained); when
+ * present it must be a plain nonnegative integer string. Market events are kept for 24
+ * hours (purgeMarketEvents, src/db/exchange.ts), and fetchEvents below bounds its query
+ * with seq > since rather than looking the row at since up, so a since naming an event
+ * already purged, 0 included, simply starts at the oldest one left rather than failing or
+ * skipping ahead. */
 function parseSince(raw: unknown): bigint {
   if (raw === undefined) return 0n;
   if (typeof raw !== "string" || !SEQ_RE.test(raw)) {
@@ -381,7 +385,7 @@ export const streamOpenApiPath: Record<string, Record<string, unknown>> = {
     operationId: "get_v1_exchange_stream",
     parameters: [
       { name: "channels", in: "query", required: true, schema: { type: "string" }, description: "Comma separated book:SYMBOL or trades:SYMBOL channels, e.g. book:BTC-USDT,trades:BTC-USDT" },
-      { name: "since", in: "query", required: false, schema: { type: "string" }, description: "Replay every event with seq greater than this value; defaults to 0" },
+      { name: "since", in: "query", required: false, schema: { type: "string" }, description: "Replay every retained event with seq greater than this value; defaults to 0. Market events are kept for 24 hours, so a since older than the oldest retained event starts at that event rather than failing" },
     ],
     responses: {
       "200": { description: "A Server-Sent Events stream: repeated event: message frames carrying {channel, seq, data}, occasional heartbeat comments, and a final event: reconnect frame", content: { "text/event-stream": { schema: { type: "string" } } } },

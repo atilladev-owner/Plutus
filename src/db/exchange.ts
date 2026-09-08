@@ -283,3 +283,67 @@ export async function listMyTrades(c: PoolClient, keyId: string, page: Page): Pr
     [keyId, page.cursor?.t ?? null, page.cursor?.id ?? "", page.limit + 1]);
   return pageOf(rows, page.limit);
 }
+
+/** Capped so one sweep against a large backlog finishes inside the pool's statement
+ * timeout; the next daily run drains whatever is left. The same cap, and the same reason
+ * for it, as purgeOld (src/db/events.ts) and purgeExpired (src/db/idempotency.ts). */
+export const SWEEP_DELETE_CAP = 5000;
+
+/**
+ * Deletes the house's own terminal orders older than 24 hours, at most SWEEP_DELETE_CAP per
+ * call. Called by the daily sweep.
+ *
+ * Security sweep, finding 1: refresh_house_ladder (db/migrations/0016_house_ladder.sql)
+ * cancels ten orders and places ten more, per market, every time a public book read finds
+ * that market's ladder older than fifteen seconds. Those reads need no key, so ordinary
+ * unauthenticated visitors grow this table for as long as the site is up, and nothing ever
+ * removed a house order: key_house is a live mode key, deliberately exempt from the idle
+ * sandbox sweep (0011_exchange.sql), so deleteIdleSandbox's cascade never reaches it.
+ *
+ * Only key_house's own rows are deleted, and only ones already in a terminal status. Every
+ * other key's orders go with the key itself when the idle sweep removes it, so deleting
+ * them here would only race that cascade for no gain. Trades reference orders with
+ * on delete set null since 0017_trades_survive_key_deletion.sql, so a trade whose house
+ * order this removes keeps its row, its price and its quantity, with that one side reading
+ * null; the public tape and the candles (src/db/market-data.ts) read neither column.
+ *
+ * The capped set is selected by ctid, Postgres's own physical row identifier, the pattern
+ * purgeExpired uses for a table with no single id column: orders does have one, but
+ * purgeMarketEvents below genuinely does not, and the two reading identically is worth more
+ * here than each using the narrowest form it could.
+ */
+export async function purgeHouseOrders(c: PoolClient): Promise<number> {
+  const r = await c.query(
+    `delete from orders where ctid in (
+       select ctid from orders
+       where key_id = $1 and status in ('filled', 'cancelled', 'rejected')
+         and updated_at < now() - interval '24 hours'
+       order by updated_at limit $2
+     )`, [HOUSE_KEY_ID, SWEEP_DELETE_CAP]);
+  return r.rowCount ?? 0;
+}
+
+/**
+ * Deletes market events older than 24 hours, at most SWEEP_DELETE_CAP per call. Called by
+ * the daily sweep. The other half of the same finding: every house ladder refresh writes
+ * an order.accepted and an order.cancelled row per order it touches, so this table grows
+ * from the same unauthenticated reads, and nothing purged it either.
+ *
+ * The stream (src/routes/exchange-stream.ts) replays market_events with seq > since, so a
+ * client reconnecting with a since older than the oldest row still retained simply starts
+ * at that oldest row: the bound is a comparison, never a lookup of the row it names, and
+ * nothing in the replay requires the event at since to still exist. Sequence numbers are
+ * never reused (markets.next_seq only ever climbs), so a resumed stream still cannot see
+ * the same event twice.
+ *
+ * market_events has no single id column (its primary key is (market, seq)), so ctid selects
+ * the capped set, exactly as purgeExpired does for idempotency_keys.
+ */
+export async function purgeMarketEvents(c: PoolClient): Promise<number> {
+  const r = await c.query(
+    `delete from market_events where ctid in (
+       select ctid from market_events where created_at < now() - interval '24 hours'
+       order by created_at limit $1
+     )`, [SWEEP_DELETE_CAP]);
+  return r.rowCount ?? 0;
+}

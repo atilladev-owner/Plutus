@@ -6,7 +6,7 @@ import { SWEEP_DELETE_CAP } from "../../src/db/events.js";
 import { withTx } from "../../src/db/pool.js";
 import { newId } from "../../src/domain/ids.js";
 import * as L from "../../src/db/ledger.js";
-import { EXCHANGE_LEDGER_ID, placeOrder, exchangeFaucet, type PlaceOrderInput } from "../../src/db/exchange.js";
+import { EXCHANGE_LEDGER_ID, HOUSE_KEY_ID, placeOrder, cancelOrder, exchangeFaucet, type PlaceOrderInput } from "../../src/db/exchange.js";
 import { refreshColdMarkets, topUpHouse } from "../../src/routes/internal.js";
 import { resetExchangeBooks, verifyExchangeLedger } from "../helpers/exchange.js";
 import { signRequest } from "../../src/platform/signing.js";
@@ -212,6 +212,81 @@ describe("the sweep", () => {
     // The trader's own exchange accounts are not deleted (they belong to ldg_exchange, not
     // to the key), so the ledger stays fully balanced; the accounts themselves are now
     // orphaned, unreachable through any key, a deferred minor this fix does not chase.
+    const report = await verifyExchangeLedger();
+    expect(report).toMatchObject({ ok: true, chain_ok: true, sequence_ok: true, replay_matches: true });
+  });
+
+  // Security sweep, finding 1 (critical): nothing ever purged orders or market_events, and
+  // refresh_house_ladder (db/migrations/0016_house_ladder.sql) cancels ten orders and places
+  // ten more per market, writing a market event for each, every time an unauthenticated book
+  // read finds that market's ladder older than fifteen seconds. Both tables are kept to 24
+  // hours by the sweep now. The house order purged below is a real one, placed as key_house
+  // and filled by a real crossing buy, so the trade that names it, its transfer and the
+  // ledger are all genuine rather than hand written rows.
+  //
+  // The market events half runs against a market of this test's own, registered here and
+  // removed at the end, for the same reason tests/integration/stream.test.ts registers one:
+  // BTC-USDT's and ETH-USDT's own event sequences are asserted gapless from one by
+  // tests/integration/matching.test.ts and tests/property/exchange.property.test.ts, and
+  // deleting the oldest row of either would leave a hole those checks would rightly fail on.
+  // Its house_quoted_at is set to now so refreshColdMarkets skips it: this market has no
+  // reference price and no ladder, and quoting one is not what is under test here.
+  it("purges the house's own old terminal orders and old market events, keeping fresh ones, every other key's orders, and the trade", async () => {
+    await resetExchangeBooks();
+    const { app, deps } = await makeTestApp();
+    const buyer = await mintKey(app);
+    await withTx(deps.pool, (c) => exchangeFaucet(c, buyer.id));
+
+    const houseSell: PlaceOrderInput = {
+      keyId: HOUSE_KEY_ID, market: "BTC-USDT", clientOrderId: null, side: "sell", type: "limit",
+      timeInForce: "GTC", postOnly: false, price: "950000000000", quantity: "100000", quoteAmount: null,
+    };
+    const rest = await placeOrder(deps.pool, houseSell);
+    const taker = await placeOrder(deps.pool, { ...houseSell, keyId: buyer.id, side: "buy" });
+    expect(taker.order.status).toBe("filled");
+    const trade = taker.trades[0];
+    if (!trade) throw new Error("the crossing order did not fill against the house's own order");
+    expect(trade.sell_order_id).toBe(rest.order.id);
+
+    // Both sides of the fill are aged past the retention window together: only the house's
+    // own is the sweep's to delete, since every other key's orders already go with the key
+    // itself when the idle sandbox sweep removes it.
+    await deps.pool.query("update orders set updated_at = now() - interval '25 hours' where id = any($1::text[])", [[rest.order.id, taker.order.id]]);
+    // A second house order, terminal but cancelled a moment ago rather than aged, to prove
+    // the age bound is real and not "every terminal house order". Cancelled through
+    // cancel_order, the way any real cancellation runs, so its hold is released too.
+    const freshHouse = await placeOrder(deps.pool, { ...houseSell, price: "960000000000" });
+    await withTx(deps.pool, (c) => cancelOrder(c, HOUSE_KEY_ID, freshHouse.order.id));
+
+    const privateMarket = "SWEEP-RETENTION";
+    await deps.pool.query(
+      `insert into markets (symbol, base, quote, tick_size, lot_size, min_notional, maker_fee_bps, taker_fee_bps, status, next_seq, house_quoted_at)
+       values ($1, 'BTC', 'USDT', 10000, 100000, 5000000, 10, 10, 'open', 3, now())`, [privateMarket]);
+    await deps.pool.query(
+      `insert into market_events (market, seq, type, payload, created_at) values
+         ($1, 1, 'order.accepted', '{}'::jsonb, now() - interval '25 hours'),
+         ($1, 2, 'order.accepted', '{}'::jsonb, now())`, [privateMarket]);
+
+    const res = await request(app).get("/internal/sweep").set("Authorization", `Bearer ${deps.config.CRON_SECRET}`);
+    expect(res.status).toBe(200);
+    expect(res.body.deleted_orders).toBeGreaterThanOrEqual(1);
+    expect(res.body.deleted_market_events).toBeGreaterThanOrEqual(1);
+
+    const survivors = await deps.pool.query<{ id: string }>(
+      "select id from orders where id = any($1::text[])", [[rest.order.id, taker.order.id, freshHouse.order.id]]);
+    expect(survivors.rows.map((r) => r.id).sort()).toEqual([taker.order.id, freshHouse.order.id].sort());
+
+    const { rows: tradeRows } = await deps.pool.query<{ buy_order_id: string | null; sell_order_id: string | null; quantity: string }>(
+      "select buy_order_id, sell_order_id, quantity::text as quantity from trades where id = $1", [trade.id]);
+    expect(tradeRows[0]).toMatchObject({ buy_order_id: taker.order.id, sell_order_id: null, quantity: trade.quantity });
+
+    const { rows: eventRows } = await deps.pool.query<{ seq: string }>(
+      "select seq::text as seq from market_events where market = $1 order by seq", [privateMarket]);
+    expect(eventRows.map((r) => r.seq)).toEqual(["2"]);
+
+    await deps.pool.query("delete from market_events where market = $1", [privateMarket]);
+    await deps.pool.query("delete from markets where symbol = $1", [privateMarket]);
+
     const report = await verifyExchangeLedger();
     expect(report).toMatchObject({ ok: true, chain_ok: true, sequence_ok: true, replay_matches: true });
   });

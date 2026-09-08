@@ -20,6 +20,8 @@ const SweepOut = z.object({
   deleted_keys: z.number().int(),
   deleted_events: z.number().int(),
   deleted_idempotency: z.number().int(),
+  deleted_orders: z.number().int(),
+  deleted_market_events: z.number().int(),
   republished_deliveries: z.number().int(),
   markets_refreshed: z.number().int(),
   house_topups: z.number().int(),
@@ -107,8 +109,9 @@ export async function topUpHouse(deps: AppDeps): Promise<number> {
  * delete cascades to its accounts, transfers, legs, holds and journal rows, so against a
  * large enough idle backlog it can run long enough on its own to hit the pool's 25 second
  * statement timeout, and this way that timeout costs only this purge, not the event purge,
- * the idempotency purge or the stale delivery republish. The third purges old events and
- * expired idempotency records (each capped, see SWEEP_DELETE_CAP in the respective db
+ * the idempotency purge or the stale delivery republish. The third purges old events,
+ * expired idempotency records, the house's own terminal orders and the market events past
+ * their 24 hour retention (each capped, see SWEEP_DELETE_CAP in the respective db
  * module), and republishes any delivery left pending past its due time (stalePending, in
  * src/db/webhooks.ts): one QStash message lost never costs a delivery, only a delay.
  * Guarded by CRON_SECRET compared in constant time; a missing secret refuses every call
@@ -144,8 +147,15 @@ async function sweep({ deps, req }: { deps: AppDeps; req: import("express").Requ
   const out = await withTx(deps.pool, async (c) => {
     const events = await purgeOld(c);
     const idem = await purgeExpired(c);
+    // Security sweep, finding 1: the house ladder's own orders and the market events every
+    // refresh writes were the two exchange tables nothing ever removed, and an
+    // unauthenticated book read is all it takes to grow both (see purgeHouseOrders in
+    // src/db/exchange.ts). Both are kept to 24 hours, both capped the same way every other
+    // purge in this transaction is.
+    const orders = await X.purgeHouseOrders(c);
+    const marketEvents = await X.purgeMarketEvents(c);
     const stale = await W.stalePending(c, 60);
-    return { deleted_events: events, deleted_idempotency: idem, stale };
+    return { deleted_events: events, deleted_idempotency: idem, deleted_orders: orders, deleted_market_events: marketEvents, stale };
   });
   for (const id of out.stale) await deps.scheduler.schedule(id, 0);
   const { stale, ...rest } = out;
