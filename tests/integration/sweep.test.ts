@@ -290,6 +290,16 @@ describe("the sweep", () => {
     const freshHouse = await placeOrder(deps.pool, { ...houseSell, price: "960000000000" });
     await withTx(deps.pool, (c) => cancelOrder(c, HOUSE_KEY_ID, freshHouse.order.id));
 
+    // Review round 1, finding 3: cancelling a quote releases its hold and leaves the row
+    // behind, and holds is the parent of orders.hold_id, so purging the order does not take
+    // it either. The stale quote's own hold is aged the same way its order was; the filled
+    // order's hold is not aged, and its order survives anyway, so it must still be there
+    // afterwards.
+    const staleHoldId = staleQuote.order.hold_id;
+    const filledHoldId = rest.order.hold_id;
+    if (!staleHoldId || !filledHoldId) throw new Error("a house sell was accepted without a hold");
+    await deps.pool.query("update holds set closed_at = now() - interval '25 hours' where id = $1", [staleHoldId]);
+
     // Review round 1, finding 2: one capped delete a day is below the rate the ladder writes
     // rows, so the sweep repeats the delete until one comes back short. Three past the cap
     // rather than two so a single extra batch is not enough either: the drain has to notice
@@ -316,6 +326,11 @@ describe("the sweep", () => {
     const survivors = await deps.pool.query<{ id: string }>(
       "select id from orders where id = any($1::text[])", [[rest.order.id, taker.order.id, staleQuote.order.id, freshHouse.order.id]]);
     expect(survivors.rows.map((r) => r.id).sort()).toEqual([rest.order.id, taker.order.id, freshHouse.order.id].sort());
+
+    expect(res.body.deleted_holds).toBeGreaterThanOrEqual(1);
+    const { rows: holdRows } = await deps.pool.query<{ id: string }>(
+      "select id from holds where id = any($1::text[])", [[staleHoldId, filledHoldId]]);
+    expect(holdRows.map((r) => r.id)).toEqual([filledHoldId]);
 
     const { rows: tradeRows } = await deps.pool.query<{ buy_order_id: string | null; sell_order_id: string | null; quantity: string }>(
       "select buy_order_id, sell_order_id, quantity::text as quantity from trades where id = $1", [trade.id]);

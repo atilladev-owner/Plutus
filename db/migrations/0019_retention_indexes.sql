@@ -26,3 +26,16 @@ create index if not exists orders_house_retention_idx on orders (updated_at)
   where key_id = 'key_house' and status in ('filled', 'cancelled', 'rejected');
 create index if not exists market_events_created_idx on market_events (created_at);
 create index if not exists api_key_old_secrets_expires_idx on api_key_old_secrets (expires_at);
+
+-- Review round 1, finding 3: the purge of inert exchange holds (purgeInertExchangeHolds in
+-- src/db/exchange.ts) reads holds by its own predicate and then checks that no order and no
+-- transfer leg names each candidate. holds_ledger_idx orders by created_at, not by the
+-- closed_at this purge bounds and sorts on, so a partial index on the predicate itself is
+-- what keeps that read to candidates only. The other two are the columns the checks look up:
+-- neither had an index, and transfer_legs.from_hold also carries the on delete cascade
+-- 0010_cascade_legs.sql put there, which without an index scans the whole leg table for every
+-- hold deleted, exactly the cost the two trade side indexes above exist to avoid.
+create index if not exists holds_exchange_released_idx on holds (closed_at)
+  where ledger_id = 'ldg_exchange' and status = 'released';
+create index if not exists orders_hold_idx on orders (hold_id);
+create index if not exists transfer_legs_from_hold_idx on transfer_legs (from_hold);

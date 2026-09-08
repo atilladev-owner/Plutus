@@ -22,6 +22,7 @@ const SweepOut = z.object({
   deleted_events: z.number().int(),
   deleted_idempotency: z.number().int(),
   deleted_orders: z.number().int(),
+  deleted_holds: z.number().int(),
   deleted_market_events: z.number().int(),
   deleted_old_secrets: z.number().int(),
   republished_deliveries: z.number().int(),
@@ -223,13 +224,18 @@ async function sweep({ deps, req }: { deps: AppDeps; req: import("express").Requ
   // them.
   const deadline = performance.now() + DRAIN_BUDGET_MS;
   const deletedOrders = await drain(deps, "orders", () => X.purgeHouseOrders(deps.pool), deadline);
+  // Straight after the orders, and not before them: a hold is only inert once no order names
+  // it, so the holds the batch above just orphaned are collected in the same sweep rather
+  // than a day later.
+  const deletedHolds = await drain(deps, "holds", () => X.purgeInertExchangeHolds(deps.pool), deadline);
   const deletedMarketEvents = await drain(deps, "market_events", () => X.purgeMarketEvents(deps.pool), deadline);
   const deletedOldSecrets = await purgeCapped(deps, "api_key_old_secrets", () => K.purgeExpiredOldSecrets(deps.pool));
   const marketsRefreshed = await refreshColdMarkets(deps);
   const houseTopups = await topUpHouse(deps);
   return {
     expired_holds: expiredHolds, deleted_ledgers: idle.ledgers, deleted_keys: idle.keys, ...rest,
-    deleted_orders: deletedOrders, deleted_market_events: deletedMarketEvents, deleted_old_secrets: deletedOldSecrets,
+    deleted_orders: deletedOrders, deleted_holds: deletedHolds, deleted_market_events: deletedMarketEvents,
+    deleted_old_secrets: deletedOldSecrets,
     republished_deliveries: stale.length, markets_refreshed: marketsRefreshed, house_topups: houseTopups,
   };
 }

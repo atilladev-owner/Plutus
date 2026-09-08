@@ -349,6 +349,44 @@ export async function purgeHouseOrders(c: Queryable): Promise<number> {
 }
 
 /**
+ * Deletes holds in the exchange ledger that are released, inert and older than 24 hours, at
+ * most SWEEP_DELETE_CAP per call. Called by the daily sweep, straight after the order purge,
+ * since a hold only becomes inert once the order naming it is gone.
+ *
+ * Review round 1, finding 3: every quote the ladder places creates a hold, and cancelling it
+ * releases that hold without deleting it. holds is the parent of orders.hold_id, not the
+ * child, so purging an order leaves its hold behind; and the only path that ever deleted an
+ * exchange hold is the cascade from ledgers in deleteIdleSandbox, which never reaches
+ * ldg_exchange because that ledger is never deleted. So this table grew at the same ten rows
+ * per market per refresh that the order purge exists for.
+ *
+ * The two "not exists" clauses are what make a deletion safe rather than merely tidy.
+ * transfer_legs.from_hold cascades on hold delete (0010_cascade_legs.sql), so deleting a hold
+ * anything was ever captured from would delete a leg of a real transfer and silently rewrite
+ * history; a released hold that appears in no leg moved no money, and a captured or expired
+ * hold is not touched here at all. The orders clause keeps a hold while an order still points
+ * at it, so a hold is only ever removed once nothing can reach it through an order either. 0019_retention_indexes.sql indexes both of those columns, and the hold
+ * predicate itself, so neither check scans a table.
+ *
+ * Nothing reads a released hold back: the verify endpoint and verifyChain (src/routes/verify.ts,
+ * src/domain/verify.ts) replay the journal and never read holds at all, held is replayed from
+ * the journal's own hold entries rather than from these rows, and no route lists holds in
+ * ldg_exchange, which belongs to no key.
+ */
+export async function purgeInertExchangeHolds(c: Queryable): Promise<number> {
+  const r = await c.query(
+    `delete from holds where ctid in (
+       select h.ctid from holds h
+       where h.ledger_id = $1 and h.status = 'released'
+         and h.closed_at < now() - interval '24 hours'
+         and not exists (select 1 from orders o where o.hold_id = h.id)
+         and not exists (select 1 from transfer_legs l where l.from_hold = h.id)
+       order by h.closed_at limit $2
+     )`, [EXCHANGE_LEDGER_ID, SWEEP_DELETE_CAP]);
+  return r.rowCount ?? 0;
+}
+
+/**
  * Deletes market events older than 24 hours, at most SWEEP_DELETE_CAP per call. Called by
  * the daily sweep. The other half of the same finding: every house ladder refresh writes
  * an order.accepted and an order.cancelled row per order it touches, so this table grows
