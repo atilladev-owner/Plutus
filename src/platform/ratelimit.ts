@@ -5,7 +5,7 @@ import { ApiError } from "../domain/errors.js";
 import type { AppDeps } from "../deps.js";
 import type { RouteDef, AuthedKey } from "./route.js";
 
-export type RateBucket = "mint" | "sandbox" | "live" | "verify" | "verify_public" | "weight" | "place" | "stream";
+export type RateBucket = "mint" | "sandbox" | "live" | "verify" | "verify_public" | "public_meta" | "weight" | "place" | "stream";
 export interface RateResult { ok: boolean; limit: number; remaining: number; resetAt: number }
 export interface RateLimiter { limit(bucket: RateBucket, id: string, points?: number): Promise<RateResult> }
 
@@ -16,6 +16,12 @@ export const RATE_RULES: Record<RateBucket, { points: number; windowSeconds: num
   verify: { points: 10, windowSeconds: 60 },
   // The public exchange proof, spec 10.6: no key, two calls a minute per IP.
   verify_public: { points: 2, windowSeconds: 60 },
+  // Security sweep, finding 3: /health and /v1/assets take no key and both query Postgres
+  // (and /health also Redis) on every call from any stranger, and both declared no limit at
+  // all. Keyed by IP, the same as every other keyless bucket here, since there is no caller
+  // to key by. 120 a minute is two a second, generous for an uptime probe or a page reading
+  // the asset table on load, and still a ceiling.
+  public_meta: { points: 120, windowSeconds: 60 },
   // Endpoint weights, spec 10.9: 1,200 weight per minute per key, plus a ten per second
   // cap on order placement that weightLimit (weights.ts) charges on top of the weight.
   // The public market data reads (spec 10.6, src/routes/exchange-market-data.ts) spend out
@@ -63,7 +69,8 @@ export class UpstashRateLimiter implements RateLimiter {
     });
     this.limiters = {
       mint: make("mint"), sandbox: make("sandbox"), live: make("live"), verify: make("verify"),
-      verify_public: make("verify_public"), weight: make("weight"), place: make("place"), stream: make("stream"),
+      verify_public: make("verify_public"), public_meta: make("public_meta"),
+      weight: make("weight"), place: make("place"), stream: make("stream"),
     };
   }
   async limit(bucket: RateBucket, id: string, points = 1): Promise<RateResult> {

@@ -34,6 +34,29 @@ describe("rate limits", () => {
     for (let i = 0; i < 59; i++) await request(app).get("/v1/keys/me").set(bearer(k.secret));
     expect((await request(app).get("/v1/keys/me").set(bearer(k.secret))).status).toBe(429);
   });
+  // Security sweep, finding 3: /health and /v1/assets both query Postgres on every call from
+  // any stranger, /health Redis too, and both declared limit "none". They share one keyless
+  // bucket now, keyed by address the way every other keyless bucket is, so the flood below
+  // exhausts it for both routes at once from that address while another address is untouched.
+  it("limits the keyless meta routes at 120 a minute per address, health included", async () => {
+    const { app } = await makeTestApp();
+    const ip = "7.7.7.7";
+    const first = await request(app).get("/v1/assets").set("X-Forwarded-For", ip);
+    expect(first.status).toBe(200);
+    expect(first.headers["ratelimit-limit"]).toBe("120");
+    for (let i = 0; i < 119; i++) await request(app).get("/v1/assets").set("X-Forwarded-For", ip);
+    const res = await request(app).get("/v1/assets").set("X-Forwarded-For", ip);
+    expect(res.status).toBe(429);
+    expect(res.body.code).toBe("rate_limited");
+    expect(res.headers["content-type"]).toContain("application/problem+json");
+    expect(Number(res.headers["retry-after"])).toBeGreaterThan(0);
+    expect((await request(app).get("/health").set("X-Forwarded-For", ip)).status).toBe(429);
+
+    const health = await request(app).get("/health").set("X-Forwarded-For", "7.7.7.8");
+    expect(health.status).toBe(200);
+    expect(health.body.checks.postgres.ok).toBe(true);
+    expect(health.body.checks.redis.ok).toBe(true);
+  });
   it("fails closed when the limiter is down", async () => {
     const broken: RateLimiter = { limit: async () => { throw new Error("redis unreachable"); } };
     const { app } = await makeTestApp({ limiter: broken });
