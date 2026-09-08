@@ -127,6 +127,41 @@ async function purgeCapped(deps: AppDeps, table: string, run: () => Promise<numb
   }
 }
 
+/** The most batches one sweep runs against one table, and the wall clock the whole retention
+ * run gets, whichever comes first. Review round 1, finding 2: one capped delete a day is
+ * below the rate the house ladder writes rows. A refresh cancels ten orders and places ten
+ * more per market, and writes a market event for each, whenever an unauthenticated book read
+ * finds that market's ladder older than fifteen seconds, which at one read per market per
+ * fifteen seconds is about 115,000 orders and 230,000 market events a day against 5,000
+ * deleted. Sixty batches is 300,000 rows per table per sweep, above that worst day; the 40
+ * second budget is what keeps the sweep itself bounded, since every batch is a statement of
+ * its own and a run that has to stop simply leaves the rest for tomorrow. */
+const DRAIN_MAX_BATCHES = 60;
+const DRAIN_BUDGET_MS = 40_000;
+
+/**
+ * Repeats a capped delete until one call comes back short, which is the proof nothing older
+ * than the bound is left, or until the batch count or the shared deadline stops it. Each
+ * batch is one autocommitted statement through purgeCapped above, so a timeout costs one
+ * batch and the count of everything already deleted is still returned and reported.
+ */
+async function drain(deps: AppDeps, table: string, run: () => Promise<number>, deadline: number): Promise<number> {
+  let total = 0;
+  for (let batch = 0; batch < DRAIN_MAX_BATCHES; batch++) {
+    if (performance.now() >= deadline) {
+      deps.logger.warn({ table, deleted: total }, "retention drain out of time; the next sweep continues");
+      break;
+    }
+    const deleted = await purgeCapped(deps, table, run);
+    total += deleted;
+    // A short batch means the backlog is gone. A failed batch answers zero through
+    // purgeCapped, which reads as short here and stops this table for the same reason: there
+    // is no point running the same statement 59 more times against whatever just refused it.
+    if (deleted < X.SWEEP_DELETE_CAP) break;
+  }
+  return total;
+}
+
 /**
  * Daily housekeeping, in three transactions and then a run of capped deletes that share
  * none. The first transaction expires holds whose time is up and commits on its own. The
@@ -181,9 +216,14 @@ async function sweep({ deps, req }: { deps: AppDeps; req: import("express").Requ
   // refresh writes were the two exchange tables nothing ever removed, and an unauthenticated
   // book read is all it takes to grow both (see purgeHouseOrders in src/db/exchange.ts).
   // Finding 5: rotation writes a retiring secret per call and nothing ever removed one, long
-  // after any of them could still authenticate. Each runs on the pool, alone.
-  const deletedOrders = await purgeCapped(deps, "orders", () => X.purgeHouseOrders(deps.pool));
-  const deletedMarketEvents = await purgeCapped(deps, "market_events", () => X.purgeMarketEvents(deps.pool));
+  // after any of them could still authenticate. Each runs on the pool, alone. The two the
+  // ladder feeds are drained rather than capped once a day, against one deadline shared by
+  // both so the sweep as a whole stays bounded; the retiring secrets are written by rotation
+  // alone, which no unauthenticated traffic drives, so one capped delete a day stays ahead of
+  // them.
+  const deadline = performance.now() + DRAIN_BUDGET_MS;
+  const deletedOrders = await drain(deps, "orders", () => X.purgeHouseOrders(deps.pool), deadline);
+  const deletedMarketEvents = await drain(deps, "market_events", () => X.purgeMarketEvents(deps.pool), deadline);
   const deletedOldSecrets = await purgeCapped(deps, "api_key_old_secrets", () => K.purgeExpiredOldSecrets(deps.pool));
   const marketsRefreshed = await refreshColdMarkets(deps);
   const houseTopups = await topUpHouse(deps);

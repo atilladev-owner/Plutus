@@ -6,7 +6,7 @@ import { SWEEP_DELETE_CAP } from "../../src/db/events.js";
 import { withTx } from "../../src/db/pool.js";
 import { newId } from "../../src/domain/ids.js";
 import * as L from "../../src/db/ledger.js";
-import { EXCHANGE_LEDGER_ID, HOUSE_KEY_ID, placeOrder, cancelOrder, exchangeFaucet, type PlaceOrderInput } from "../../src/db/exchange.js";
+import { EXCHANGE_LEDGER_ID, HOUSE_KEY_ID, SWEEP_DELETE_CAP as EXCHANGE_DELETE_CAP, placeOrder, cancelOrder, exchangeFaucet, type PlaceOrderInput } from "../../src/db/exchange.js";
 import { refreshColdMarkets, topUpHouse } from "../../src/routes/internal.js";
 import { resetExchangeBooks, verifyExchangeLedger } from "../helpers/exchange.js";
 import { signRequest } from "../../src/platform/signing.js";
@@ -290,19 +290,28 @@ describe("the sweep", () => {
     const freshHouse = await placeOrder(deps.pool, { ...houseSell, price: "960000000000" });
     await withTx(deps.pool, (c) => cancelOrder(c, HOUSE_KEY_ID, freshHouse.order.id));
 
+    // Review round 1, finding 2: one capped delete a day is below the rate the ladder writes
+    // rows, so the sweep repeats the delete until one comes back short. Three past the cap
+    // rather than two so a single extra batch is not enough either: the drain has to notice
+    // the second batch was short and stop, having taken all of them, and the fresh row at the
+    // end proves it stopped on the bound rather than on the batch count.
     const privateMarket = "SWEEP-RETENTION";
+    const aged = EXCHANGE_DELETE_CAP + 3;
     await deps.pool.query(
       `insert into markets (symbol, base, quote, tick_size, lot_size, min_notional, maker_fee_bps, taker_fee_bps, status, next_seq, house_quoted_at)
-       values ($1, 'BTC', 'USDT', 10000, 100000, 5000000, 10, 10, 'open', 3, now())`, [privateMarket]);
+       values ($1, 'BTC', 'USDT', 10000, 100000, 5000000, 10, 10, 'open', $2, now())`, [privateMarket, aged + 2]);
     await deps.pool.query(
-      `insert into market_events (market, seq, type, payload, created_at) values
-         ($1, 1, 'order.accepted', '{}'::jsonb, now() - interval '25 hours'),
-         ($1, 2, 'order.accepted', '{}'::jsonb, now())`, [privateMarket]);
+      `insert into market_events (market, seq, type, payload, created_at)
+       select $1, g, 'order.accepted', '{}'::jsonb, now() - interval '25 hours' from generate_series(1, $2) g`,
+      [privateMarket, aged]);
+    await deps.pool.query(
+      "insert into market_events (market, seq, type, payload, created_at) values ($1, $2, 'order.accepted', '{}'::jsonb, now())",
+      [privateMarket, aged + 1]);
 
     const res = await request(app).get("/internal/sweep").set("Authorization", `Bearer ${deps.config.CRON_SECRET}`);
     expect(res.status).toBe(200);
     expect(res.body.deleted_orders).toBeGreaterThanOrEqual(1);
-    expect(res.body.deleted_market_events).toBeGreaterThanOrEqual(1);
+    expect(res.body.deleted_market_events).toBeGreaterThanOrEqual(aged);
 
     const survivors = await deps.pool.query<{ id: string }>(
       "select id from orders where id = any($1::text[])", [[rest.order.id, taker.order.id, staleQuote.order.id, freshHouse.order.id]]);
@@ -314,7 +323,7 @@ describe("the sweep", () => {
 
     const { rows: eventRows } = await deps.pool.query<{ seq: string }>(
       "select seq::text as seq from market_events where market = $1 order by seq", [privateMarket]);
-    expect(eventRows.map((r) => r.seq)).toEqual(["2"]);
+    expect(eventRows.map((r) => r.seq)).toEqual([String(aged + 1)]);
 
     await deps.pool.query("delete from market_events where market = $1", [privateMarket]);
     await deps.pool.query("delete from markets where symbol = $1", [privateMarket]);
