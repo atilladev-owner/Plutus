@@ -42,14 +42,23 @@ describe("the race, through the API", () => {
   // locked before the count now (src/db/locks.ts). Eleven and six at once rather than two:
   // one extra request would pass on a lucky interleaving even against the old code, while a
   // whole batch past the ceiling makes the failure certain rather than occasional.
-  it("never exceeds the ten ledger ceiling under eleven concurrent creates for one key", async () => {
+  it("never exceeds the ten ledger ceiling under five concurrent creates one short of it", async () => {
     const { app } = await makeTestApp();
     const k = await mintKey(app);
     const h = bearer(k.secret);
-    const results = await Promise.all(Array.from({ length: 11 }, (_, i) =>
+    // Nine first, then five at once for the last place. Review round 1, finding 4: firing
+    // eleven at an empty account proved nothing, because the pool holds five connections
+    // (src/db/pool.ts) and five transactions that all count zero insert exactly five, then
+    // five that all count five insert exactly ten, which is the ceiling reached without a
+    // lock anywhere. Seeding to one short puts every request in the batch across the
+    // boundary, so unlocked code lets more than one of them through by construction.
+    for (let i = 0; i < 9; i++) {
+      expect((await request(app).post("/v1/ledgers").set(h).send({ name: `seed-${i}` })).status).toBe(201);
+    }
+    const results = await Promise.all(Array.from({ length: 5 }, (_, i) =>
       request(app).post("/v1/ledgers").set(h).send({ name: `race-${i}` })));
     for (const r of results) expect([201, 409]).toContain(r.status);
-    expect(results.filter((r) => r.status === 201)).toHaveLength(10);
+    expect(results.filter((r) => r.status === 201)).toHaveLength(1);
     for (const r of results.filter((r) => r.status === 409)) expect(r.body.code).toBe("sandbox_limit_reached");
     const list = await request(app).get("/v1/ledgers").set(h);
     expect(list.body.data).toHaveLength(10);
@@ -76,21 +85,22 @@ describe("the race, through the API", () => {
     expect(list.body.data).toHaveLength(5);
   });
 
-  it("never exceeds the fifty account ceiling under concurrent creates for one ledger", async () => {
+  it("never exceeds the fifty account ceiling under five concurrent creates one short of it", async () => {
     const { app } = await makeTestApp();
     const k = await mintKey(app);
     const h = bearer(k.secret);
     const l = (await request(app).post("/v1/ledgers").set(h).send({ name: "accounts" })).body;
-    // Forty five sequentially, to get close to the ceiling cheaply, then eight at once across
-    // it: the race is only ever at the boundary, and one ledger create plus forty five plus
-    // eight is fifty four requests, inside the sandbox key's own sixty a minute budget.
-    for (let i = 0; i < 45; i++) {
+    // Forty nine sequentially, then five at once for the last place, for the same reason the
+    // ledger case seeds nine: forty five plus a five wide batch is exactly fifty, which
+    // unlocked code reaches without ever exceeding it. One ledger create plus forty nine plus
+    // five is fifty five requests, inside the sandbox key's own sixty a minute budget.
+    for (let i = 0; i < 49; i++) {
       expect((await request(app).post(`/v1/ledgers/${l.id}/accounts`).set(h).send({ asset: "USD", name: `a${i}` })).status).toBe(201);
     }
-    const results = await Promise.all(Array.from({ length: 8 }, (_, i) =>
+    const results = await Promise.all(Array.from({ length: 5 }, (_, i) =>
       request(app).post(`/v1/ledgers/${l.id}/accounts`).set(h).send({ asset: "USD", name: `race-${i}` })));
     for (const r of results) expect([201, 409]).toContain(r.status);
-    expect(results.filter((r) => r.status === 201)).toHaveLength(5);
+    expect(results.filter((r) => r.status === 201)).toHaveLength(1);
     for (const r of results.filter((r) => r.status === 409)) expect(r.body.code).toBe("sandbox_limit_reached");
   });
 });
