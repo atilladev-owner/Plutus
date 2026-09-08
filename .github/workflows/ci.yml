@@ -32,6 +32,10 @@ jobs:
       - run: npm run check
       - run: npm run lint
       - run: npm run typecheck
+      # The one thing no test against a local database can check: that the hash pinned beside
+      # the reference bundle's CDN URL still matches what that URL serves. A stale hash blanks
+      # /docs in every browser, so it fails the build here instead.
+      - run: node scripts/check-reference-bundle.mjs
       - run: npm run test:unit
       - run: npm run test:integration
       - run: npm run test:property
