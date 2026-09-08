@@ -1112,3 +1112,58 @@ section:last-of-type { border-bottom: none; }
 @media (max-width: 390px) {
   .wrap { padding-left: var(--sp-16); padding-right: var(--sp-16); }
 }
+
+/* Maker's mark: Product of Atilla Dev. The same stamp every Atilla Dev product carries,
+   placed the same way, with the crest swapped per theme so it reads on both grounds. */
+.atilla-mark {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 90;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 14px 8px 8px;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  text-decoration: none;
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 600;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: 0 8px 20px rgba(31, 42, 36, 0.14);
+  transition: border-color 180ms ease-out;
+}
+.atilla-mark:hover, .atilla-mark:focus-visible { border-color: var(--accent); color: var(--ink); }
+.atilla-mark img { width: 26px; height: 26px; display: block; }
+.atilla-mark .crest-dark { display: none; }
+.atilla-watermark {
+  position: fixed;
+  right: -70px;
+  bottom: 56px;
+  width: 380px;
+  height: 380px;
+  z-index: 89;
+  opacity: 0.06;
+  pointer-events: none;
+  background: url("/atilla-crest-black.webp") center / contain no-repeat;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .atilla-mark .crest-light { display: none; }
+  :root:not([data-theme="light"]) .atilla-mark .crest-dark { display: block; }
+  :root:not([data-theme="light"]) .atilla-watermark { background-image: url("/atilla-crest-gold.webp"); opacity: 0.05; }
+}
+:root[data-theme="dark"] .atilla-mark .crest-light { display: none; }
+:root[data-theme="dark"] .atilla-mark .crest-dark { display: block; }
+:root[data-theme="dark"] .atilla-watermark { background-image: url("/atilla-crest-gold.webp"); opacity: 0.05; }
+@media (max-width: 767px) {
+  .atilla-watermark { display: none; }
+  .atilla-mark { right: 12px; bottom: 12px; font-size: 10px; padding: 7px 12px 7px 7px; }
+  .atilla-mark img { width: 22px; height: 22px; }
+}

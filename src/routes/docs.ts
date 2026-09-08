@@ -240,6 +240,14 @@ const SCALAR_CONFIG = {
   agent: { disabled: true },
 } as const;
 
+
+/** The maker's mark every Atilla Dev product carries, appended to the reference shell. */
+const MAKER_MARK =
+  '<div class="atilla-watermark" aria-hidden="true"></div>' +
+  '<a class="atilla-mark" href="https://atilladev.vercel.app" target="_blank" rel="noopener noreferrer">' +
+  '<img class="crest-light" src="/atilla-crest-black.webp" alt="" width="26" height="26">' +
+  '<img class="crest-dark" src="/atilla-crest-gold.webp" alt="" width="26" height="26">Product of Atilla Dev</a>';
+
 /** Mounted separately because Scalar is a rendered page, not a route with a schema. */
 export function mountDocs(app: Express, _deps: AppDeps): void {
   const html = renderApiReference({
@@ -248,6 +256,7 @@ export function mountDocs(app: Express, _deps: AppDeps): void {
   })
     .replace("<html>", '<html lang="en">')
     .replace("<head>", "<head>" + FONT_LINKS + SITE_ASSET_LINKS + HISTORY_PATCH)
-    .replace("<body>", "<body>" + TOPBAR_HTML);
+    .replace("<body>", "<body>" + TOPBAR_HTML)
+    .replace("</body>", MAKER_MARK + "</body>");
   app.get("/docs", (_req, res) => { res.type("text/html").send(html); });
 }
