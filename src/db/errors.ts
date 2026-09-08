@@ -15,16 +15,23 @@ const RAISED: Record<string, { status: number; code: ErrorCode }> = {
   order_not_open: { status: 409, code: "order_not_open" },
 };
 
+/** The two per key cooldowns, exchange_faucet (db/migrations/0012_exchange_wallet.sql) and
+ * exchange_reset_cooldown (0018_reset_cooldown.sql). Both raise with the whole seconds still
+ * remaining in the detail, so both answer 429 with a Retry-After header, which the RAISED
+ * table below cannot express: it maps a status and a code and nothing else. */
+const COOLDOWNS: Record<string, { code: ErrorCode; detail: string }> = {
+  faucet_cooldown: { code: "faucet_cooldown", detail: "the faucet can be used once every 24 hours" },
+  reset_cooldown: { code: "reset_cooldown", detail: "the reset can be used once every 60 seconds" },
+};
+
 /** Turns an exception raised by our SQL functions into an ApiError. Anything else returns null. */
 export function mapDbError(err: unknown): ApiError | null {
   const e = err as PgLikeError;
   if (typeof e?.message !== "string") return null;
-  // exchange_faucet (db/migrations/0012_exchange_wallet.sql) raises this with the whole
-  // seconds still remaining in its detail, so the Retry-After header and the RAISED table's
-  // plain status/code mapping cannot share one branch the way every other raised code does.
-  if (e.message === "faucet_cooldown") {
+  const cooldown = COOLDOWNS[e.message];
+  if (cooldown) {
     const seconds = e.detail && /^[1-9][0-9]*$/.test(e.detail) ? e.detail : "1";
-    return new ApiError(429, "faucet_cooldown", "the faucet can be used once every 24 hours", undefined, { "Retry-After": seconds });
+    return new ApiError(429, cooldown.code, cooldown.detail, undefined, { "Retry-After": seconds });
   }
   // place_order (db/migrations/0013_place_order.sql, amended by 0016_house_ladder.sql's
   // notional_too_large) raises this with detail set to one of the ten named reasons in

@@ -35,6 +35,12 @@ export const exchangeWalletRoutes = [
       requireSandbox(key!);
       let eventIds: string[] = [];
       const out = await tx(async (c) => {
+        // Security sweep, finding 2: this whole handler locks every market and cancels every
+        // open order the key owns, and the standard signed budget alone (weight 5 of 1,200 a
+        // minute) would let one key run it 240 times a minute. The per key cooldown goes
+        // first, before any lock or cancellation, so a refused call has done no work to roll
+        // back and never holds a market lock while it answers.
+        await X.claimExchangeReset(c, key!.id);
         // Now that place_order and cancel_order exist (task 5), reset cancels every open
         // order the key owns through cancel_order first, so each one leaves an
         // order.cancelled market event and key event behind exactly like an explicit

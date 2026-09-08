@@ -175,6 +175,47 @@ describe("exchange wallets", () => {
     expect(report).toMatchObject({ ok: true, chain_ok: true, sequence_ok: true, replay_matches: true });
   });
 
+  // Security sweep, finding 2 (important): reset locks every market and cancels every open
+  // order the caller owns on every call, and the standard signed budget alone (weight 5 of
+  // 1,200 a minute) allowed 240 of those a minute per key. It now carries a 60 second per key
+  // cooldown, built exactly the way the faucet's own 24 hour one is
+  // (db/migrations/0018_reset_cooldown.sql): the key's row locked "for update" before its
+  // last_at is read. The resting order below is what proves the refusal costs nothing: the
+  // cooldown is taken before any market lock or cancellation, so a refused reset leaves an
+  // open order exactly where it was rather than cancelling it and then rolling back.
+  it("refuses a second reset inside 60 seconds with a cooldown and a Retry-After header, cancelling nothing", async () => {
+    const { app } = await makeTestApp();
+    const k = await mintKey(app);
+    await faucet(app, k);
+    expect((await reset(app, k)).status).toBe(200);
+
+    const input: PlaceOrderInput = {
+      keyId: k.id, market: "BTC-USDT", clientOrderId: null, side: "buy", type: "limit",
+      timeInForce: "GTC", postOnly: false, price: "990000000000", quantity: "100000", quoteAmount: null,
+    };
+    const placed = await placeOrder(testPool(), input);
+    expect(placed.order.status).toBe("open");
+
+    const again = await reset(app, k);
+    expect(again.status).toBe(429);
+    expect(again.body.code).toBe("reset_cooldown");
+    const retryAfter = Number(again.headers["retry-after"]);
+    expect(Number.isInteger(retryAfter)).toBe(true);
+    expect(retryAfter).toBeGreaterThan(0);
+    expect(retryAfter).toBeLessThanOrEqual(60);
+
+    const { rows } = await testPool().query<{ status: string }>("select status from orders where id = $1", [placed.order.id]);
+    expect(rows[0]?.status).toBe("open");
+
+    // The same time injection the faucet's own cooldown test uses: the stored last_at moves
+    // back rather than the clock forward.
+    await testPool().query("update resets set last_at = now() - interval '61 seconds' where key_id = $1", [k.id]);
+    const after = await reset(app, k);
+    expect(after.status).toBe(200);
+    const { rows: cancelled } = await testPool().query<{ status: string }>("select status from orders where id = $1", [placed.order.id]);
+    expect(cancelled[0]?.status).toBe("cancelled");
+  });
+
   it("does nothing on reset for a key that never called the faucet", async () => {
     const { app } = await makeTestApp();
     const k = await mintKey(app);

@@ -70,6 +70,14 @@ export async function exchangeFaucet(c: PoolClient, keyId: string): Promise<stri
   return (rows[0] as { r: FunctionResult }).r.event_ids;
 }
 
+/** Takes the key's own 60 second reset cooldown (db/migrations/0018_reset_cooldown.sql),
+ * locking its row before checking; raises reset_cooldown (mapped by src/db/errors.ts) when
+ * the last reset was too recent. Called as the reset handler's first statement, before any
+ * market lock or cancellation, so a refused call has done nothing to roll back. */
+export async function claimExchangeReset(c: PoolClient, keyId: string): Promise<void> {
+  await c.query("select exchange_reset_cooldown($1, now())", [keyId]);
+}
+
 /** Releases every open hold the key owns in ldg_exchange and moves each asset balance
  * back to its faucet amount. A no-op for a key that never called the faucet. */
 export async function exchangeReset(c: PoolClient, keyId: string): Promise<string[]> {
