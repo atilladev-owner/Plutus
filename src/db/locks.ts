@@ -21,11 +21,18 @@ import type { PoolClient } from "pg";
  *
  * Both are taken only when the ceiling actually applies, which is only for a sandbox key: a
  * live key has no ceiling to enforce, and serialising its inserts behind a row lock would
- * cost it concurrency for a check that can never fire. Nothing else in this codebase locks
- * an api_keys or a ledgers row before locking the other, so neither of these can be half of
- * a deadlock cycle; post_transfer and its neighbours take the ledger row and then accounts
- * in ascending id order, which is the same direction an account insert under lockLedger
- * takes them in.
+ * cost it concurrency for a check that can never fire.
+ *
+ * Neither can be half of a deadlock cycle, and the reason is not that nothing else locks
+ * these two tables in the other order: the daily sweep's deleteIdleSandbox (src/db/ledger.ts)
+ * does exactly that, deleting ledgers rows and then api_keys rows inside one transaction. The
+ * reason is that a transaction that holds one lock and then waits on nothing anyone else
+ * holds cannot close a cycle. Each ceiling path takes exactly one of these rows and then
+ * touches only rows it is creating: the count reads its own key's or ledger's children
+ * without locking them, and the insert takes a lock on the new row alone, plus the key share
+ * on the parent this transaction already holds for update. So both paths are terminal in the
+ * wait graph. A concurrent sweep can block behind one of them, and does; it can never be
+ * blocked by one that is itself blocked waiting on the sweep.
  */
 export async function lockKey(c: PoolClient, keyId: string): Promise<void> {
   await c.query("select 1 from api_keys where id = $1 for update", [keyId]);
