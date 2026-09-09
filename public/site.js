@@ -397,7 +397,6 @@
 
     window.addEventListener("pageshow", function () {
       startTimers();
-      if (!eventSource) openStream();
     });
   }
 
@@ -815,6 +814,7 @@
 
     window.addEventListener("pageshow", function () {
       startTimers();
+      if (!eventSource) openStream();
     });
   }
 
