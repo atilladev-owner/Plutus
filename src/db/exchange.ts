@@ -371,7 +371,7 @@ export async function purgeHouseOrders(c: Queryable): Promise<number> {
  * Nothing reads a released hold back: the verify endpoint and verifyChain (src/routes/verify.ts,
  * src/domain/verify.ts) replay the journal and never read holds at all, held is replayed from
  * the journal's own hold entries rather than from these rows, and no route lists holds in
- * ldg_exchange, which belongs to no key.
+ * ldg_exchange, which belongs to key_house, a live mode key the idle sweep never removes.
  */
 export async function purgeInertExchangeHolds(c: Queryable): Promise<number> {
   const r = await c.query(

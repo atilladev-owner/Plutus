@@ -136,9 +136,12 @@ async function purgeCapped(deps: AppDeps, table: string, run: () => Promise<numb
  * fifteen seconds is about 115,000 orders and 230,000 market events a day against 5,000
  * deleted. Sixty batches is 300,000 rows per table per sweep, above that worst day; the 40
  * second budget is what keeps the sweep itself bounded, since every batch is a statement of
- * its own and a run that has to stop simply leaves the rest for tomorrow. */
+ * its own and a run that has to stop simply leaves the rest for tomorrow. Fifteen seconds
+ * because the app answers every request, this one included, with a 503 after thirty
+ * (src/create-app.ts), and the ladder refresh and the top up still run after the drains:
+ * a sweep that spent forty seconds draining would finish its work and lose its report. */
 const DRAIN_MAX_BATCHES = 60;
-const DRAIN_BUDGET_MS = 40_000;
+const DRAIN_BUDGET_MS = 15_000;
 
 /**
  * Repeats a capped delete until one call comes back short, which is the proof nothing older
@@ -223,12 +226,15 @@ async function sweep({ deps, req }: { deps: AppDeps; req: import("express").Requ
   // alone, which no unauthenticated traffic drives, so one capped delete a day stays ahead of
   // them.
   const deadline = performance.now() + DRAIN_BUDGET_MS;
+  // Market events first: they grow twice as fast as the orders (two per order the ladder
+  // touches) and depend on nothing else, so on a day the budget runs out they are the
+  // table that must not be the one left waiting.
+  const deletedMarketEvents = await drain(deps, "market_events", () => X.purgeMarketEvents(deps.pool), deadline);
   const deletedOrders = await drain(deps, "orders", () => X.purgeHouseOrders(deps.pool), deadline);
   // Straight after the orders, and not before them: a hold is only inert once no order names
   // it, so the holds the batch above just orphaned are collected in the same sweep rather
   // than a day later.
   const deletedHolds = await drain(deps, "holds", () => X.purgeInertExchangeHolds(deps.pool), deadline);
-  const deletedMarketEvents = await drain(deps, "market_events", () => X.purgeMarketEvents(deps.pool), deadline);
   const deletedOldSecrets = await purgeCapped(deps, "api_key_old_secrets", () => K.purgeExpiredOldSecrets(deps.pool));
   const marketsRefreshed = await refreshColdMarkets(deps);
   const houseTopups = await topUpHouse(deps);
