@@ -38,7 +38,11 @@ const FONT_LINKS =
 const SITE_ASSET_LINKS =
   '<link rel="stylesheet" href="/site.css">' +
   '<link rel="icon" type="image/svg+xml" href="/favicon.svg">' +
-  '<script src="/site.js"></script>';
+  '<script src="/site.js"></script>' +
+  // Vercel Web Analytics, the same two lines every site page carries, so a visit to the
+  // reference counts alongside the rest of the site.
+  "<script>window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };</script>" +
+  '<script defer src="/_vercel/insights/script.js"></script>';
 
 /**
  * The same top bar every site page carries (public/index.html and its siblings), copied
