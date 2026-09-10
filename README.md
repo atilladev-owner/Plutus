@@ -6,7 +6,7 @@ A ledger you can audit and an exchange you can trade against.
 
 ## What it is
 
-Plutus is a multi asset ledger, and from milestone two a paper trading exchange, exposed as a single HTTP API. Every account is double entry, every transfer runs as one Postgres function under row locks, and every write appends to a hash chained journal anyone can verify. Idempotency keys make a retried write safe, and webhook deliveries are signed and retried on a fixed schedule. The whole surface is asserted by a test suite of 236 tests across 48 files, run against a real Postgres, not a mock.
+Plutus is a multi asset ledger, and from milestone two a paper trading exchange, exposed as a single HTTP API. Every account is double entry, every transfer runs as one Postgres function under row locks, and every write appends to a hash chained journal anyone can verify. Idempotency keys make a retried write safe, and webhook deliveries are signed and retried on a fixed schedule. The whole surface is asserted by a test suite of 261 tests across 50 files, run against a real Postgres, not a mock.
 
 The site at [plutus-ten-eta.vercel.app](https://plutus-ten-eta.vercel.app) walks all of this with the exchange working live: [how it works](https://plutus-ten-eta.vercel.app/how-it-works) for the illustrated tour, [the exchange](https://plutus-ten-eta.vercel.app/exchange) for the live book and trades, [set up](https://plutus-ten-eta.vercel.app/set-up) for the same steps below one at a time, and [limits](https://plutus-ten-eta.vercel.app/limits) for both ceiling tables live against the running service.
 
