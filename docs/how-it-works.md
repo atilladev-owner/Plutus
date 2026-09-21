@@ -133,10 +133,12 @@ on the assumption that the obvious fix must have worked.
 
 ## What went wrong during the build, and what it taught
 
-A self trade, an order matching against another order from the same key, used to crash
-the matching engine instead of being refused. It became a clean rejection instead, which
-is the general lesson: a case that should never happen still needs a named, deliberate
-answer, not a crash that assumes it truly never will.
+A self trade, an order matching against another order from the same key, used to fail
+deep inside the matching engine instead of being refused: the walk built a transfer from
+an account to itself, which the ledger turned away with a generic validation error. It
+became a clean rejection by name instead, which is the general lesson: a case that should
+never happen still needs a named, deliberate answer, not a failure that surfaces as
+somebody else's error.
 
 Fees were originally charged per fill. On an order that filled in several small pieces,
 rounding each of those fees up on its own could add up to slightly more than the amount
